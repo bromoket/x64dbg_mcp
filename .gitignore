@@ -1,0 +1,36 @@
+# Build outputs
+plugin/build/
+plugin/out/
+server/dist/
+server/node_modules/
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+CMakeSettings.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Compiled binaries
+*.dp32
+*.dp64
+*.dll
+*.lib
+*.obj
+*.pdb
+*.exp
+*.ilk
+
+# Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Claude
+.claude/
