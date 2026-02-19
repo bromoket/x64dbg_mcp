@@ -33,6 +33,10 @@ bool c_bridge_executor::exec_command(const std::string& cmd) {
     return DbgCmdExecDirect(cmd.c_str());
 }
 
+bool c_bridge_executor::exec_command_async(const std::string& cmd) {
+    return DbgCmdExec(cmd.c_str());
+}
+
 bool c_bridge_executor::exec_command_and_wait(const std::string& cmd, int timeout_ms) {
     std::lock_guard lock(m_mutex);
 

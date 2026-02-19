@@ -12,19 +12,37 @@ import { registerModuleTools } from './modules.js';
 import { registerMemmapTools } from './memmap.js';
 import { registerSearchTools } from './search.js';
 import { registerCommandTools } from './command.js';
+import { registerAnalysisTools } from './analysis.js';
+import { registerTracingTools } from './tracing.js';
+import { registerDumpingTools } from './dumping.js';
+import { registerAntiDebugTools } from './antidebug.js';
+import { registerExceptionTools } from './exceptions.js';
+import { registerProcessTools } from './process.js';
+import { registerHandleTools } from './handles.js';
+import { registerControlFlowTools } from './controlflow.js';
+import { registerPatchTools } from './patches.js';
 
 export function registerAllTools(server: McpServer) {
-  registerDebugTools(server);       // 9 tools
-  registerRegisterTools(server);    // 4 tools
-  registerMemoryTools(server);      // 7 tools
-  registerDisassemblyTools(server); // 4 tools
-  registerBreakpointTools(server);  // 11 tools
-  registerSymbolTools(server);      // 9 tools
-  registerStackTools(server);       // 4 tools
-  registerThreadTools(server);      // 7 tools
-  registerModuleTools(server);      // 3 tools
-  registerMemmapTools(server);      // 2 tools
-  registerSearchTools(server);      // 2 tools
-  registerCommandTools(server);     // 3 tools
-  // Total: 65 tools
+  registerDebugTools(server);        // 10 tools (+1 get_health)
+  registerRegisterTools(server);     // 5 tools
+  registerMemoryTools(server);       // 9 tools
+  registerDisassemblyTools(server);  // 4 tools
+  registerBreakpointTools(server);   // 11 tools
+  registerSymbolTools(server);       // 9 tools
+  registerStackTools(server);        // 7 tools
+  registerThreadTools(server);       // 9 tools
+  registerModuleTools(server);       // 5 tools
+  registerMemmapTools(server);       // 2 tools
+  registerSearchTools(server);       // 5 tools
+  registerCommandTools(server);      // 8 tools
+  registerAnalysisTools(server);     // 13 tools
+  registerTracingTools(server);      // 10 tools
+  registerDumpingTools(server);      // 9 tools
+  registerAntiDebugTools(server);    // 4 tools
+  registerExceptionTools(server);    // 5 tools
+  registerProcessTools(server);      // 6 tools (+1 get_basic_process_info)
+  registerHandleTools(server);       // 6 tools
+  registerControlFlowTools(server);  // 7 tools
+  registerPatchTools(server);        // 4 tools (new)
+  // Total: 148 tools
 }

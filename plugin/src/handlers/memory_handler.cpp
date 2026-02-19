@@ -3,6 +3,7 @@
 #include "util/format_utils.h"
 
 #include <nlohmann/json.hpp>
+#include "_dbgfunctions.h"
 
 namespace handlers {
 
@@ -194,6 +195,41 @@ void register_memory_routes(c_http_router& router) {
             {"address",    address_str},
             {"size",       size_str},
             {"protection", protection}
+        });
+    });
+
+    // GET /api/memory/is_code?address= - Check if address is in a code page
+    router.get("/api/memory/is_code", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_debugging()) {
+            return s_http_response::conflict("No active debug session");
+        }
+
+        auto address_str = req.get_query("address");
+        if (address_str.empty()) {
+            return s_http_response::bad_request("Missing 'address' query parameter");
+        }
+
+        auto address = bridge.eval_expression(address_str);
+        auto is_code = DbgFunctions()->MemIsCodePage(address, true);
+
+        return s_http_response::ok({
+            {"address", format_utils::format_address(address)},
+            {"is_code", is_code}
+        });
+    });
+
+    // POST /api/memory/update_map - Refresh memory map
+    router.post("/api/memory/update_map", [](const s_http_request&) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_debugging()) {
+            return s_http_response::conflict("No active debug session");
+        }
+
+        DbgFunctions()->MemUpdateMap();
+
+        return s_http_response::ok({
+            {"message", "Memory map updated"}
         });
     });
 }

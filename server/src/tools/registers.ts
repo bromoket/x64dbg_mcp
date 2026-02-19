@@ -45,4 +45,14 @@ export function registerRegisterTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'get_avx512_registers',
+    'Get AVX-512 extended register dump (requires CPU and OS support)',
+    {},
+    async () => {
+      const data = await httpClient.get('/api/registers/avx512');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }

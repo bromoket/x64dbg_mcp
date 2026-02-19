@@ -3,6 +3,8 @@
 #include "util/format_utils.h"
 
 #include <nlohmann/json.hpp>
+#include "bridgemain.h"
+#include "_dbgfunctions.h"
 
 namespace handlers {
 
@@ -151,6 +153,51 @@ void register_thread_routes(c_http_router& router) {
         }
 
         return s_http_response::ok({{"count", result.value()["count"]}});
+    });
+
+    // GET /api/threads/teb?tid= - Get TEB address for thread
+    router.get("/api/threads/teb", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_debugging()) {
+            return s_http_response::conflict("No active debug session");
+        }
+
+        auto tid_str = req.get_query("tid");
+        if (tid_str.empty()) {
+            return s_http_response::bad_request("Missing 'tid' query parameter");
+        }
+
+        auto tid = static_cast<DWORD>(std::stoul(tid_str));
+        auto teb = DbgGetTebAddress(tid);
+
+        return s_http_response::ok({
+            {"tid", tid},
+            {"teb", format_utils::format_address(teb)},
+            {"found", teb != 0}
+        });
+    });
+
+    // GET /api/threads/name?tid= - Get thread name
+    router.get("/api/threads/name", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_debugging()) {
+            return s_http_response::conflict("No active debug session");
+        }
+
+        auto tid_str = req.get_query("tid");
+        if (tid_str.empty()) {
+            return s_http_response::bad_request("Missing 'tid' query parameter");
+        }
+
+        auto tid = static_cast<DWORD>(std::stoul(tid_str));
+        char name[MAX_THREAD_NAME_SIZE] = {};
+        auto found = DbgFunctions()->ThreadGetName(tid, name);
+
+        return s_http_response::ok({
+            {"tid", tid},
+            {"name", std::string(name)},
+            {"found", found}
+        });
     });
 }
 

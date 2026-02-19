@@ -45,4 +45,38 @@ export function registerStackTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'get_stack_comment',
+    'Get the stack comment and color for a stack address',
+    {
+      address: z.string().describe('Stack address to get comment for'),
+    },
+    async ({ address }) => {
+      const data = await httpClient.get('/api/stack/comment', { address });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_callstack_by_thread',
+    'Get the call stack for a specific thread by its handle (not the current thread)',
+    {
+      handle: z.string().describe('Thread handle value (hex)'),
+    },
+    async ({ handle }) => {
+      const data = await httpClient.get('/api/stack/callstack_thread', { handle });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_return_address',
+    'Get the return address from the top of the current stack (value at [RSP/ESP])',
+    {},
+    async () => {
+      const data = await httpClient.get('/api/stack/return_address');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }

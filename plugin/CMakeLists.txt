@@ -42,6 +42,13 @@ set(SOURCES
     src/handlers/memmap_handler.cpp
     src/handlers/command_handler.cpp
     src/handlers/analysis_handler.cpp
+    src/handlers/tracing_handler.cpp
+    src/handlers/dumping_handler.cpp
+    src/handlers/antidebug_handler.cpp
+    src/handlers/exceptions_handler.cpp
+    src/handlers/process_handler.cpp
+    src/handlers/handles_handler.cpp
+    src/handlers/controlflow_handler.cpp
 )
 
 # Create shared library (plugin DLL)

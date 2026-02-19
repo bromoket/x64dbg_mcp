@@ -24,6 +24,9 @@ public:
     // Execute a command synchronously (return value often intentionally ignored)
     bool exec_command(const std::string& cmd);
 
+    // Execute a command asynchronously (non-blocking, for traces/animations)
+    bool exec_command_async(const std::string& cmd);
+
     // Execute a command and wait for the debugger to pause (with timeout)
     [[nodiscard]] bool exec_command_and_wait(const std::string& cmd, int timeout_ms = 5000);
 

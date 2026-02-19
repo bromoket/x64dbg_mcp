@@ -3,6 +3,7 @@
 #include "util/format_utils.h"
 
 #include <nlohmann/json.hpp>
+#include "bridgemain.h"
 
 namespace handlers {
 
@@ -148,6 +149,50 @@ void register_register_routes(c_http_router& router) {
             {"OF", flags.o},
             {"eflags", format_utils::format_address(dump_result->regcontext.eflags)}
         });
+    });
+
+    // GET /api/registers/avx512 - Get AVX-512 register dump
+    router.get("/api/registers/avx512", [](const s_http_request&) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_paused()) {
+            return s_http_response::conflict("Debugger must be paused");
+        }
+
+        REGDUMP_AVX512 avx512{};
+        if (!DbgGetRegDumpEx(&avx512, sizeof(REGDUMP_AVX512))) {
+            return s_http_response::internal_error("Failed to get AVX-512 register dump (may not be supported)");
+        }
+
+        // Return the standard REGDUMP portion plus AVX-512 indicator
+        const auto& ctx = avx512.regcontext;
+        nlohmann::json data;
+
+#ifdef _WIN64
+        data["rax"] = format_utils::format_address(ctx.cax);
+        data["rcx"] = format_utils::format_address(ctx.ccx);
+        data["rdx"] = format_utils::format_address(ctx.cdx);
+        data["rbx"] = format_utils::format_address(ctx.cbx);
+        data["rsp"] = format_utils::format_address(ctx.csp);
+        data["rbp"] = format_utils::format_address(ctx.cbp);
+        data["rsi"] = format_utils::format_address(ctx.csi);
+        data["rdi"] = format_utils::format_address(ctx.cdi);
+        data["rip"] = format_utils::format_address(ctx.cip);
+#else
+        data["eax"] = format_utils::format_address(ctx.cax);
+        data["ecx"] = format_utils::format_address(ctx.ccx);
+        data["edx"] = format_utils::format_address(ctx.cdx);
+        data["ebx"] = format_utils::format_address(ctx.cbx);
+        data["esp"] = format_utils::format_address(ctx.csp);
+        data["ebp"] = format_utils::format_address(ctx.cbp);
+        data["esi"] = format_utils::format_address(ctx.csi);
+        data["edi"] = format_utils::format_address(ctx.cdi);
+        data["eip"] = format_utils::format_address(ctx.cip);
+#endif
+
+        data["avx512_supported"] = true;
+        data["eflags"] = format_utils::format_address(ctx.eflags);
+
+        return s_http_response::ok(data);
     });
 }
 

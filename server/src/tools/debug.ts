@@ -4,6 +4,16 @@ import { httpClient } from '../http_client.js';
 
 export function registerDebugTools(server: McpServer) {
   server.tool(
+    'get_health',
+    'Check if the x64dbg MCP plugin is running and responsive. Returns version, plugin name, and status.',
+    {},
+    async () => {
+      const data = await httpClient.get('/api/health');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
     'get_debug_state',
     'Get the current debugger state (stopped/running/paused), CIP, and module info',
     {},

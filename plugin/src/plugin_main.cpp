@@ -25,6 +25,13 @@ namespace handlers {
     void register_memmap_routes(c_http_router& router);
     void register_command_routes(c_http_router& router);
     void register_analysis_routes(c_http_router& router);
+    void register_tracing_routes(c_http_router& router);
+    void register_dumping_routes(c_http_router& router);
+    void register_antidebug_routes(c_http_router& router);
+    void register_exception_routes(c_http_router& router);
+    void register_process_routes(c_http_router& router);
+    void register_handles_routes(c_http_router& router);
+    void register_controlflow_routes(c_http_router& router);
 } // namespace handlers
 
 // Globals
@@ -81,6 +88,13 @@ void register_all_routes(c_http_router& router) {
     handlers::register_memmap_routes(router);
     handlers::register_command_routes(router);
     handlers::register_analysis_routes(router);
+    handlers::register_tracing_routes(router);
+    handlers::register_dumping_routes(router);
+    handlers::register_antidebug_routes(router);
+    handlers::register_exception_routes(router);
+    handlers::register_process_routes(router);
+    handlers::register_handles_routes(router);
+    handlers::register_controlflow_routes(router);
 }
 
 // ============================================================================

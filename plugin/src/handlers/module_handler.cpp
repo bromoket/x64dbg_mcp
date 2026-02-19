@@ -3,6 +3,7 @@
 #include "util/format_utils.h"
 
 #include <nlohmann/json.hpp>
+#include "_dbgfunctions.h"
 
 namespace handlers {
 
@@ -107,6 +108,58 @@ void register_module_routes(c_http_router& router) {
         return s_http_response::ok({
             {"name", name},
             {"base", format_utils::format_address(base)}
+        });
+    });
+
+    // GET /api/modules/section?address= - Get section name at address
+    router.get("/api/modules/section", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_debugging()) {
+            return s_http_response::conflict("No active debug session");
+        }
+
+        auto address_str = req.get_query("address");
+        if (address_str.empty()) {
+            return s_http_response::bad_request("Missing 'address' query parameter");
+        }
+
+        auto address = bridge.eval_expression(address_str);
+        char section[MAX_SECTION_SIZE * 5] = {};
+        auto found = DbgFunctions()->SectionFromAddr(address, section);
+
+        return s_http_response::ok({
+            {"address", format_utils::format_address(address)},
+            {"found",   found},
+            {"section", std::string(section)}
+        });
+    });
+
+    // GET /api/modules/party?base= - Get module party (user/system)
+    router.get("/api/modules/party", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_debugging()) {
+            return s_http_response::conflict("No active debug session");
+        }
+
+        auto base_str = req.get_query("base");
+        if (base_str.empty()) {
+            return s_http_response::bad_request("Missing 'base' query parameter");
+        }
+
+        auto base = bridge.eval_expression(base_str);
+        auto party = DbgFunctions()->ModGetParty(base);
+
+        std::string party_str;
+        switch (party) {
+            case mod_user:   party_str = "user"; break;
+            case mod_system: party_str = "system"; break;
+            default:         party_str = "unknown"; break;
+        }
+
+        return s_http_response::ok({
+            {"base",  format_utils::format_address(base)},
+            {"party", party_str},
+            {"party_id", static_cast<int>(party)}
         });
     });
 }

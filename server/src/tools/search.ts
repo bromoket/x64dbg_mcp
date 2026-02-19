@@ -30,4 +30,42 @@ export function registerSearchTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'get_string_at',
+    'Get the string value at a memory address (auto-detects ASCII/Unicode)',
+    {
+      address: z.string().describe('Address to read string from'),
+    },
+    async ({ address }) => {
+      const data = await httpClient.get('/api/search/string_at', { address });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'symbol_auto_complete',
+    'Auto-complete a symbol name. Returns matching symbols for a partial search string.',
+    {
+      search: z.string().describe('Partial symbol name to auto-complete'),
+      max_results: z.number().optional().default(20).describe('Maximum number of results'),
+    },
+    async ({ search, max_results }) => {
+      const data = await httpClient.post('/api/search/auto_complete', { search, max_results });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_encode_type',
+    'Get the encode type at an address (byte, word, dword, code, ascii, unicode, etc.)',
+    {
+      address: z.string().describe('Address to query'),
+      size: z.string().optional().default('1').describe('Size to check'),
+    },
+    async ({ address, size }) => {
+      const data = await httpClient.get('/api/search/encode_type', { address, size });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }

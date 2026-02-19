@@ -3,6 +3,7 @@
 #include "util/format_utils.h"
 
 #include <nlohmann/json.hpp>
+#include "_dbgfunctions.h"
 
 namespace handlers {
 
@@ -46,6 +47,72 @@ void register_command_routes(c_http_router& router) {
             {"expression", expression},
             {"value",      format_utils::format_address(result)},
             {"decimal",    result}
+        });
+    });
+
+    // POST /api/command/format - Format string using x64dbg expression engine
+    router.post("/api/command/format", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_paused()) {
+            return s_http_response::conflict("Debugger must be paused");
+        }
+
+        auto body = nlohmann::json::parse(req.body, nullptr, false);
+        if (body.is_discarded() || !body.contains("format")) {
+            return s_http_response::bad_request("Missing 'format' field");
+        }
+
+        auto fmt = body["format"].get<std::string>();
+        char result[1024] = {};
+        auto success = DbgFunctions()->StringFormatInline(fmt.c_str(), sizeof(result), result);
+
+        return s_http_response::ok({
+            {"success", success},
+            {"format",  fmt},
+            {"result",  std::string(result)}
+        });
+    });
+
+    // GET /api/command/events - Get debug event count
+    router.get("/api/command/events", [](const s_http_request&) -> s_http_response {
+        auto events = DbgFunctions()->GetDbgEvents();
+
+        return s_http_response::ok({
+            {"event_count", events}
+        });
+    });
+
+    // POST /api/command/init_script - Set debuggee init script
+    router.post("/api/command/init_script", [](const s_http_request& req) -> s_http_response {
+        auto body = nlohmann::json::parse(req.body, nullptr, false);
+        if (body.is_discarded() || !body.contains("file")) {
+            return s_http_response::bad_request("Missing 'file' field");
+        }
+
+        auto file = body["file"].get<std::string>();
+        DbgFunctions()->DbgSetDebuggeeInitScript(file.c_str());
+
+        return s_http_response::ok({
+            {"file", file},
+            {"message", "Init script set"}
+        });
+    });
+
+    // GET /api/command/init_script - Get debuggee init script
+    router.get("/api/command/init_script", [](const s_http_request&) -> s_http_response {
+        auto* script = DbgFunctions()->DbgGetDebuggeeInitScript();
+
+        return s_http_response::ok({
+            {"file", script ? std::string(script) : ""}
+        });
+    });
+
+    // GET /api/command/hash - Get database hash
+    router.get("/api/command/hash", [](const s_http_request&) -> s_http_response {
+        auto hash = DbgFunctions()->DbGetHash();
+
+        return s_http_response::ok({
+            {"hash", format_utils::format_address(hash)}
         });
     });
 

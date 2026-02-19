@@ -113,6 +113,102 @@ void register_stack_routes(c_http_router& router) {
         });
     });
 
+    // GET /api/stack/comment?address= - Get stack comment
+    router.get("/api/stack/comment", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_paused()) {
+            return s_http_response::conflict("Debugger must be paused");
+        }
+
+        auto address_str = req.get_query("address");
+        if (address_str.empty()) {
+            return s_http_response::bad_request("Missing 'address' query parameter");
+        }
+
+        auto address = bridge.eval_expression(address_str);
+        STACK_COMMENT comment{};
+        auto found = DbgStackCommentGet(address, &comment);
+
+        return s_http_response::ok({
+            {"address", format_utils::format_address(address)},
+            {"found",   found},
+            {"comment", std::string(comment.comment)},
+            {"color",   std::string(comment.color)}
+        });
+    });
+
+    // GET /api/stack/callstack_thread?handle= - Get call stack for specific thread
+    router.get("/api/stack/callstack_thread", [](const s_http_request& req) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_paused()) {
+            return s_http_response::conflict("Debugger must be paused");
+        }
+
+        auto handle_str = req.get_query("handle");
+        if (handle_str.empty()) {
+            return s_http_response::bad_request("Missing 'handle' query parameter");
+        }
+
+        auto handle = bridge.eval_expression(handle_str);
+
+        DBGCALLSTACK callstack{};
+        DbgFunctions()->GetCallStackByThread(reinterpret_cast<HANDLE>(handle), &callstack);
+
+        auto frames = nlohmann::json::array();
+        for (int i = 0; i < callstack.total; ++i) {
+            const auto& entry = callstack.entries[i];
+            auto label = bridge.get_label_at(entry.to);
+            auto module_name = bridge.get_module_at(entry.to);
+
+            frames.push_back({
+                {"index",   i},
+                {"address", format_utils::format_address(entry.addr)},
+                {"from",    format_utils::format_address(entry.from)},
+                {"to",      format_utils::format_address(entry.to)},
+                {"label",   label},
+                {"module",  module_name},
+                {"comment", entry.comment}
+            });
+        }
+
+        if (callstack.entries) {
+            BridgeFree(callstack.entries);
+        }
+
+        return s_http_response::ok({
+            {"frames", frames},
+            {"count",  frames.size()}
+        });
+    });
+
+    // GET /api/stack/return_address - Get return address from stack
+    router.get("/api/stack/return_address", [](const s_http_request&) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.require_paused()) {
+            return s_http_response::conflict("Debugger must be paused");
+        }
+
+        // Read the value at [RSP/ESP] which is typically the return address
+        auto sp = bridge.eval_expression("csp");
+        auto mem = bridge.read_memory(sp, sizeof(duint));
+        if (!mem.has_value()) {
+            return s_http_response::internal_error("Failed to read stack pointer");
+        }
+
+        duint return_addr = 0;
+        memcpy(&return_addr, mem.value().data(), sizeof(duint));
+
+        auto label = bridge.get_label_at(return_addr);
+        auto module_name = bridge.get_module_at(return_addr);
+
+        return s_http_response::ok({
+            {"stack_pointer",  format_utils::format_address(sp)},
+            {"return_address", format_utils::format_address(return_addr)},
+            {"label",          label},
+            {"module",         module_name}
+        });
+    });
+
     // GET /api/stack/seh_chain - SEH handler chain
     router.get("/api/stack/seh_chain", [](const s_http_request&) -> s_http_response {
         auto& bridge = get_bridge();

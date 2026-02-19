@@ -32,4 +32,58 @@ export function registerCommandTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'format_string',
+    'Format a string using x64dbg expression engine (e.g. "{rax:x}" → "00007FF...", "{s:rsp}" → stack string)',
+    {
+      format: z.string().describe('Format string with x64dbg expressions (e.g. "{rax:x}", "{s:rsp}", "{a:cip}")'),
+    },
+    async ({ format }) => {
+      const data = await httpClient.post('/api/command/format', { format });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_debug_events',
+    'Get the total number of debug events that have occurred',
+    {},
+    async () => {
+      const data = await httpClient.get('/api/command/events');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'set_init_script',
+    'Set the debuggee initialization script (runs when debug session starts)',
+    {
+      file: z.string().describe('Path to the script file'),
+    },
+    async ({ file }) => {
+      const data = await httpClient.post('/api/command/init_script', { file });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_init_script',
+    'Get the current debuggee initialization script path',
+    {},
+    async () => {
+      const data = await httpClient.get('/api/command/init_script');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_database_hash',
+    'Get the hash of the current x64dbg database',
+    {},
+    async () => {
+      const data = await httpClient.get('/api/command/hash');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }

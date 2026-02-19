@@ -82,4 +82,26 @@ export function registerMemoryTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'is_code_page',
+    'Check if an address belongs to an executable (code) memory page',
+    {
+      address: z.string().describe('Address to check'),
+    },
+    async ({ address }) => {
+      const data = await httpClient.get('/api/memory/is_code', { address });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'update_memory_map',
+    'Force refresh the memory map. Call after memory allocations, protections changes, or module loads/unloads.',
+    {},
+    async () => {
+      const data = await httpClient.post('/api/memory/update_map');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }

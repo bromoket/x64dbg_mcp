@@ -4,6 +4,9 @@
   "description": "MCP server for x64dbg debugger integration",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "x64dbg-mcp-server": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

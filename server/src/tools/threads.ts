@@ -72,4 +72,28 @@ export function registerThreadTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'get_thread_teb',
+    'Get the TEB (Thread Environment Block) address for a thread',
+    {
+      tid: z.string().describe('Thread ID (decimal)'),
+    },
+    async ({ tid }) => {
+      const data = await httpClient.get('/api/threads/teb', { tid });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_thread_name',
+    'Get the name of a thread by its thread ID',
+    {
+      tid: z.string().describe('Thread ID (decimal)'),
+    },
+    async ({ tid }) => {
+      const data = await httpClient.get('/api/threads/name', { tid });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }

@@ -32,4 +32,28 @@ export function registerModuleTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'get_section_at',
+    'Get the PE section name at an address (e.g. ".text", ".rdata", ".vmp0")',
+    {
+      address: z.string().describe('Address to look up section for'),
+    },
+    async ({ address }) => {
+      const data = await httpClient.get('/api/modules/section', { address });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'get_module_party',
+    'Get whether a module is user code or system code (user/system)',
+    {
+      base: z.string().describe('Module base address'),
+    },
+    async ({ base }) => {
+      const data = await httpClient.get('/api/modules/party', { base });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }
