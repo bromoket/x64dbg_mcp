@@ -9,15 +9,26 @@ interface PluginResponse<T = unknown> {
   };
 }
 
+type ConnectionState = 'connected' | 'disconnected' | 'reconnecting';
+
 export class HttpClient {
-  private baseUrl: string;
+  private base_url: string;
+  private state: ConnectionState = 'disconnected';
+  private last_successful_request = 0;
+  private consecutive_failures = 0;
+  private health_check_interval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    this.baseUrl = getBaseUrl();
+    this.base_url = getBaseUrl();
+    this.start_health_monitor();
+  }
+
+  get connection_state(): ConnectionState {
+    return this.state;
   }
 
   async get<T = unknown>(path: string, params?: Record<string, string>): Promise<T> {
-    const url = new URL(path, this.baseUrl);
+    const url = new URL(path, this.base_url);
     if (params) {
       for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== '') {
@@ -30,7 +41,7 @@ export class HttpClient {
   }
 
   async post<T = unknown>(path: string, body?: unknown): Promise<T> {
-    const url = new URL(path, this.baseUrl);
+    const url = new URL(path, this.base_url);
     const options: RequestInit = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -43,20 +54,89 @@ export class HttpClient {
     return this.request<T>(url.toString(), options);
   }
 
-  private async request<T>(url: string, options: RequestInit): Promise<T> {
-    let lastError: Error | null = null;
+  destroy() {
+    if (this.health_check_interval) {
+      clearInterval(this.health_check_interval);
+      this.health_check_interval = null;
+    }
+  }
 
-    for (let attempt = 0; attempt <= config.retries; attempt++) {
+  private start_health_monitor() {
+    // Periodic health check every 30s to detect plugin restarts
+    this.health_check_interval = setInterval(async () => {
+      if (this.state === 'disconnected' || this.state === 'reconnecting') {
+        await this.check_health();
+      }
+    }, 30_000);
+
+    // Initial health check
+    this.check_health().catch(() => {});
+  }
+
+  private async check_health(): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeout_id = setTimeout(() => controller.abort(), 3000);
+
+      const response = await fetch(`${this.base_url}/api/health`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout_id);
+
+      if (response.ok) {
+        if (this.state !== 'connected') {
+          console.error(`[x64dbg-mcp] Plugin connection established at ${this.base_url}`);
+        }
+        this.state = 'connected';
+        this.consecutive_failures = 0;
+        return true;
+      }
+      return false;
+    } catch {
+      if (this.state === 'connected') {
+        console.error('[x64dbg-mcp] Plugin connection lost, will retry on next request');
+      }
+      this.state = 'disconnected';
+      return false;
+    }
+  }
+
+  private is_connection_error(err: Error): boolean {
+    const msg = err.message.toLowerCase();
+    return (
+      msg.includes('econnrefused') ||
+      msg.includes('econnreset') ||
+      msg.includes('epipe') ||
+      msg.includes('enotfound') ||
+      msg.includes('enetunreach') ||
+      msg.includes('ehostunreach') ||
+      msg.includes('socket hang up') ||
+      msg.includes('fetch failed') ||
+      msg.includes('network') ||
+      msg.includes('econnaborted') ||
+      msg.includes('etimedout')
+    );
+  }
+
+  private async request<T>(url: string, options: RequestInit): Promise<T> {
+    let last_error: Error | null = null;
+
+    // More retries for connection errors (plugin might be restarting)
+    const max_retries = this.state === 'connected' ? config.retries : config.retries + 3;
+
+    for (let attempt = 0; attempt <= max_retries; attempt++) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), config.timeout);
+        const timeout_id = setTimeout(() => controller.abort(), config.timeout);
 
         const response = await fetch(url, {
           ...options,
           signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
+        clearTimeout(timeout_id);
 
         const text = await response.text();
         let parsed: PluginResponse<T>;
@@ -68,33 +148,75 @@ export class HttpClient {
         }
 
         if (!parsed.success) {
-          const errMsg = parsed.error?.message ?? 'Unknown plugin error';
-          const errCode = parsed.error?.code ?? 500;
-          throw new Error(`Plugin error (${errCode}): ${errMsg}`);
+          const err_msg = parsed.error?.message ?? 'Unknown plugin error';
+          const err_code = parsed.error?.code ?? 500;
+          throw new Error(`Plugin error (${err_code}): ${err_msg}`);
         }
+
+        // Request succeeded - update state
+        this.state = 'connected';
+        this.consecutive_failures = 0;
+        this.last_successful_request = Date.now();
 
         return parsed.data as T;
       } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
+        last_error = err instanceof Error ? err : new Error(String(err));
 
-        // Don't retry on client errors (4xx equivalent)
-        if (lastError.message.includes('Plugin error (4')) {
-          throw lastError;
+        // Don't retry on client errors (4xx equivalent) - these are real errors
+        if (last_error.message.includes('Plugin error (4')) {
+          this.state = 'connected'; // Plugin responded, connection is fine
+          throw last_error;
         }
 
-        // Don't retry on abort (timeout)
-        if (lastError.name === 'AbortError') {
-          throw new Error(`Request to ${url} timed out after ${config.timeout}ms`);
+        // Don't retry on plugin 409 (conflict / debugger state errors)
+        if (last_error.message.includes('Plugin error (409)')) {
+          this.state = 'connected';
+          throw last_error;
         }
 
-        // Retry on connection errors
+        // Handle timeout
+        if (last_error.name === 'AbortError') {
+          this.consecutive_failures++;
+          if (attempt >= max_retries) {
+            throw new Error(
+              `Request timed out after ${config.timeout}ms (${attempt + 1} attempts). ` +
+              `Is the x64dbg plugin running on ${this.base_url}?`
+            );
+          }
+        }
+
+        // Handle connection errors with exponential backoff
+        if (this.is_connection_error(last_error)) {
+          this.consecutive_failures++;
+
+          if (this.state === 'connected') {
+            this.state = 'reconnecting';
+            console.error('[x64dbg-mcp] Connection lost to plugin, attempting reconnect...');
+          }
+
+          if (attempt < max_retries) {
+            // Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
+            const delay = Math.min(200 * Math.pow(2, attempt), 5000);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+
+          this.state = 'disconnected';
+          throw new Error(
+            `Cannot connect to x64dbg plugin at ${this.base_url} after ${attempt + 1} attempts. ` +
+            `Make sure x64dbg is running with the MCP plugin loaded. ` +
+            `Check with 'mcpserver status' in x64dbg command bar.`
+          );
+        }
+
+        // Other errors - limited retry with linear backoff
         if (attempt < config.retries) {
-          await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+          await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
         }
       }
     }
 
-    throw lastError ?? new Error('Request failed');
+    throw last_error ?? new Error('Request failed');
   }
 }
 

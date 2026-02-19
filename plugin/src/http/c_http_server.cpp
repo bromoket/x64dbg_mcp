@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <mstcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -90,7 +91,27 @@ void c_http_server::stop() {
 }
 
 void c_http_server::listener_loop() {
+    // Use select() with timeout so we can check m_running periodically
+    // instead of blocking forever in accept()
     while (m_running.load()) {
+        fd_set read_set;
+        FD_ZERO(&read_set);
+        FD_SET(m_listen_socket, &read_set);
+
+        timeval tv{};
+        tv.tv_sec = 1;  // 1 second poll interval
+        tv.tv_usec = 0;
+
+        auto sel_result = select(0, &read_set, nullptr, nullptr, &tv);
+        if (sel_result == SOCKET_ERROR) {
+            if (!m_running.load()) break;
+            continue;
+        }
+        if (sel_result == 0) {
+            // Timeout - just loop and check m_running
+            continue;
+        }
+
         sockaddr_in client_addr{};
         int client_addr_len = sizeof(client_addr);
 
@@ -101,13 +122,11 @@ void c_http_server::listener_loop() {
         );
 
         if (client_socket == INVALID_SOCKET) {
-            // Expected when shutting down (closesocket on listen socket)
             if (!m_running.load()) break;
             continue;
         }
 
         // Handle each connection on a detached thread
-        // (We only ever have 1 MCP client, so thread explosion isn't a concern)
         std::thread(&c_http_server::handle_connection, this, client_socket).detach();
     }
 }
@@ -117,6 +136,20 @@ void c_http_server::handle_connection(SOCKET client_socket) {
     DWORD timeout = RECV_TIMEOUT_MS;
     setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO,
                reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+
+    // Set send timeout
+    setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO,
+               reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+
+    // Disable Nagle's algorithm for low latency
+    int nodelay = 1;
+    setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY,
+               reinterpret_cast<const char*>(&nodelay), sizeof(nodelay));
+
+    // Enable TCP keepalive to detect dead connections
+    int keepalive = 1;
+    setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE,
+               reinterpret_cast<const char*>(&keepalive), sizeof(keepalive));
 
     // Read the full request
     std::string raw_data;
@@ -174,9 +207,16 @@ void c_http_server::handle_connection(SOCKET client_socket) {
         response = s_http_response::bad_request(parse_result.error());
     }
 
-    // Send response
+    // Send response (handle partial sends)
     auto response_str = response.serialize();
-    send(client_socket, response_str.c_str(), static_cast<int>(response_str.size()), 0);
+    auto total = static_cast<int>(response_str.size());
+    int sent = 0;
+
+    while (sent < total) {
+        auto result = send(client_socket, response_str.c_str() + sent, total - sent, 0);
+        if (result == SOCKET_ERROR) break;
+        sent += result;
+    }
 
     // Graceful shutdown
     shutdown(client_socket, SD_SEND);
