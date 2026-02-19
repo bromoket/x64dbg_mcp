@@ -29,7 +29,7 @@ A production-grade [Model Context Protocol](https://modelcontextprotocol.io/) se
 
 ## Quick Start (Prebuilt Release)
 
-1. Download the latest release from [Releases](https://github.com/x64dbg/x64dbg_mcp/releases)
+1. Download the latest release from [Releases](https://github.com/bromoket/x64dbg_mcp/releases)
 2. Copy `x64dbg_mcp.dp64` to your x64dbg `x64/plugins/` directory
 3. Copy `x64dbg_mcp.dp32` to your x64dbg `x32/plugins/` directory
 4. Start x64dbg - you should see `[MCP] x64dbg MCP Server started on 127.0.0.1:27042` in the log
@@ -532,7 +532,7 @@ x64dbg_mcp/
 
 ## Author
 
-**bromo** - [GitHub](https://github.com/bromo)
+**bromo** - [GitHub](https://github.com/bromoket)
 
 This project was built with the help of [Claude Code](https://claude.ai/claude-code) (Opus 4.6) by Anthropic.
 
