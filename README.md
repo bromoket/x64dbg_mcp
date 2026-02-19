@@ -246,20 +246,20 @@ mcpserver status   - Show server status
 | Tool | Description |
 |------|-------------|
 | `read_memory` | Read bytes from address (hex dump + ASCII) |
-| `write_memory` | Write bytes to address |
+| `write_memory` | Write bytes to address (optional `verify` readback check) |
 | `is_valid_address` | Check if address is a valid readable pointer |
 | `get_memory_info` | Get memory page protection info |
 | `allocate_memory` | Allocate memory via VirtualAllocEx |
 | `free_memory` | Free allocated memory |
 | `set_memory_protection` | Change page protection (VirtualProtectEx) |
-| `get_string_at` | Read string at address (auto-detects ASCII/Unicode) |
+| `get_string_at` | Read string at address (auto/ascii/unicode encoding param) |
 | `update_memory_map` | Force refresh the memory map |
 
 ### Disassembly (4 tools)
 | Tool | Description |
 |------|-------------|
 | `disassemble` | Disassemble instructions at address |
-| `disassemble_function` | Disassemble an entire function |
+| `disassemble_function` | Disassemble an entire function (configurable `max_instructions`) |
 | `get_instruction_info` | Quick info about a single instruction |
 | `assemble` | Assemble an instruction at address |
 
@@ -336,7 +336,7 @@ mcpserver status   - Show server status
 ### Search (5 tools)
 | Tool | Description |
 |------|-------------|
-| `search_pattern` | Byte pattern (AOB) scan with wildcard support |
+| `search_pattern` | Byte pattern (AOB) scan with wildcard support - returns all matches |
 | `search_strings` | Search for string references in a module |
 | `find_strings_in_module` | Find and display all strings in a module |
 | `list_module_symbols` | Load and list symbols for a module |
@@ -486,7 +486,7 @@ x64dbg_mcp/
       bridge/
         c_bridge_executor.*   # Thread-safe bridge to x64dbg API
       handlers/
-        debug_handler.cpp     # Debug control endpoints (10)
+        debug_handler.cpp     # Debug control endpoints (11)
         register_handler.cpp  # Register endpoints (5)
         memory_handler.cpp    # Memory endpoints (9)
         disasm_handler.cpp    # Disassembly endpoints (4)
@@ -504,7 +504,7 @@ x64dbg_mcp/
         dumping_handler.cpp   # Dumping endpoints (9)
         antidebug_handler.cpp # Anti-debug endpoints (4)
         exceptions_handler.cpp # Exception endpoints (5)
-        process_handler.cpp   # Process endpoints (5)
+        process_handler.cpp   # Process endpoints (6)
         handles_handler.cpp   # Handle endpoints (6)
         controlflow_handler.cpp # Control flow endpoints (7)
         patch_handler.cpp     # Patch endpoints (4)
@@ -519,7 +519,7 @@ x64dbg_mcp/
       http_client.ts          # HTTP client for plugin communication
       tools/
         index.ts              # Tool registration (21 categories)
-        debug.ts              # 10 debug tools
+        debug.ts              # 11 debug tools
         registers.ts          # 5 register tools
         memory.ts             # 9 memory tools
         ...                   # (21 tool files total)
