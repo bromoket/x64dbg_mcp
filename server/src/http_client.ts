@@ -11,6 +11,10 @@ interface PluginResponse<T = unknown> {
 
 type ConnectionState = 'connected' | 'disconnected' | 'reconnecting';
 
+// How long to wait for the plugin to come online before failing a request
+const WAIT_FOR_PLUGIN_TIMEOUT_MS = 120_000; // 2 minutes
+const WAIT_POLL_INTERVAL_MS = 2_000;        // poll every 2s
+
 export class HttpClient {
   private base_url: string;
   private state: ConnectionState = 'disconnected';
@@ -62,14 +66,12 @@ export class HttpClient {
   }
 
   private start_health_monitor() {
-    // Periodic health check every 30s to detect plugin restarts
+    // Periodic health check every 15s to maintain connection awareness
     this.health_check_interval = setInterval(async () => {
-      if (this.state === 'disconnected' || this.state === 'reconnecting') {
-        await this.check_health();
-      }
-    }, 30_000);
+      await this.check_health();
+    }, 15_000);
 
-    // Initial health check
+    // Initial health check (non-blocking)
     this.check_health().catch(() => {});
   }
 
@@ -86,21 +88,68 @@ export class HttpClient {
       clearTimeout(timeout_id);
 
       if (response.ok) {
-        if (this.state !== 'connected') {
-          console.error(`[x64dbg-mcp] Plugin connection established at ${this.base_url}`);
-        }
+        const was_disconnected = this.state !== 'connected';
         this.state = 'connected';
         this.consecutive_failures = 0;
+        if (was_disconnected) {
+          console.error(`[x64dbg-mcp] Plugin connection established at ${this.base_url}`);
+        }
         return true;
       }
       return false;
     } catch {
       if (this.state === 'connected') {
-        console.error('[x64dbg-mcp] Plugin connection lost, will retry on next request');
+        console.error('[x64dbg-mcp] Plugin connection lost, will reconnect automatically');
+        this.state = 'disconnected';
       }
-      this.state = 'disconnected';
       return false;
     }
+  }
+
+  /**
+   * Block until the plugin is reachable. Polls /api/health every 2s
+   * for up to 2 minutes. This is the key fix: instead of failing
+   * immediately when the plugin isn't running, we wait for it.
+   */
+  private async wait_for_connection(): Promise<void> {
+    // Already connected - skip
+    if (this.state === 'connected') return;
+
+    // Quick check first
+    if (await this.check_health()) return;
+
+    // Plugin not available - enter wait loop
+    this.state = 'reconnecting';
+    console.error(
+      `[x64dbg-mcp] Plugin not reachable at ${this.base_url}, waiting up to ${WAIT_FOR_PLUGIN_TIMEOUT_MS / 1000}s for it to come online...`
+    );
+
+    const deadline = Date.now() + WAIT_FOR_PLUGIN_TIMEOUT_MS;
+    let poll_count = 0;
+
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, WAIT_POLL_INTERVAL_MS));
+      poll_count++;
+
+      if (await this.check_health()) {
+        console.error(`[x64dbg-mcp] Plugin came online after ~${poll_count * 2}s`);
+        return;
+      }
+
+      // Log progress every 10s
+      if (poll_count % 5 === 0) {
+        const elapsed = Math.round((Date.now() - (deadline - WAIT_FOR_PLUGIN_TIMEOUT_MS)) / 1000);
+        const remaining = Math.round((deadline - Date.now()) / 1000);
+        console.error(`[x64dbg-mcp] Still waiting for plugin... (${elapsed}s elapsed, ${remaining}s remaining)`);
+      }
+    }
+
+    this.state = 'disconnected';
+    throw new Error(
+      `x64dbg plugin did not come online at ${this.base_url} within ${WAIT_FOR_PLUGIN_TIMEOUT_MS / 1000}s. ` +
+      `Make sure x64dbg is running with the MCP plugin loaded. ` +
+      `Check with 'mcpserver status' in x64dbg command bar.`
+    );
   }
 
   private is_connection_error(err: Error): boolean {
@@ -121,12 +170,13 @@ export class HttpClient {
   }
 
   private async request<T>(url: string, options: RequestInit): Promise<T> {
+    // CRITICAL: If not connected, wait for the plugin to come online
+    // This prevents Claude from seeing connection errors and giving up
+    await this.wait_for_connection();
+
     let last_error: Error | null = null;
 
-    // More retries for connection errors (plugin might be restarting)
-    const max_retries = this.state === 'connected' ? config.retries : config.retries + 3;
-
-    for (let attempt = 0; attempt <= max_retries; attempt++) {
+    for (let attempt = 0; attempt <= config.retries; attempt++) {
       try {
         const controller = new AbortController();
         const timeout_id = setTimeout(() => controller.abort(), config.timeout);
@@ -153,7 +203,7 @@ export class HttpClient {
           throw new Error(`Plugin error (${err_code}): ${err_msg}`);
         }
 
-        // Request succeeded - update state
+        // Success
         this.state = 'connected';
         this.consecutive_failures = 0;
         this.last_successful_request = Date.now();
@@ -162,14 +212,8 @@ export class HttpClient {
       } catch (err) {
         last_error = err instanceof Error ? err : new Error(String(err));
 
-        // Don't retry on client errors (4xx equivalent) - these are real errors
+        // Don't retry on 4xx plugin errors - these are valid responses
         if (last_error.message.includes('Plugin error (4')) {
-          this.state = 'connected'; // Plugin responded, connection is fine
-          throw last_error;
-        }
-
-        // Don't retry on plugin 409 (conflict / debugger state errors)
-        if (last_error.message.includes('Plugin error (409)')) {
           this.state = 'connected';
           throw last_error;
         }
@@ -177,39 +221,42 @@ export class HttpClient {
         // Handle timeout
         if (last_error.name === 'AbortError') {
           this.consecutive_failures++;
-          if (attempt >= max_retries) {
+          if (attempt >= config.retries) {
             throw new Error(
               `Request timed out after ${config.timeout}ms (${attempt + 1} attempts). ` +
-              `Is the x64dbg plugin running on ${this.base_url}?`
+              `The plugin may be busy with a long operation.`
             );
           }
+          // Brief pause before retry on timeout
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
         }
 
-        // Handle connection errors with exponential backoff
+        // Connection errors mid-request: the plugin may have restarted
         if (this.is_connection_error(last_error)) {
           this.consecutive_failures++;
+          this.state = 'reconnecting';
+          console.error(`[x64dbg-mcp] Connection error on attempt ${attempt + 1}: ${last_error.message}`);
 
-          if (this.state === 'connected') {
-            this.state = 'reconnecting';
-            console.error('[x64dbg-mcp] Connection lost to plugin, attempting reconnect...');
-          }
-
-          if (attempt < max_retries) {
-            // Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
-            const delay = Math.min(200 * Math.pow(2, attempt), 5000);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
+          if (attempt < config.retries) {
+            // Wait for reconnection before retrying
+            console.error('[x64dbg-mcp] Waiting for plugin to come back...');
+            try {
+              await this.wait_for_connection();
+              continue; // Plugin is back, retry the request
+            } catch {
+              throw last_error; // Timed out waiting
+            }
           }
 
           this.state = 'disconnected';
           throw new Error(
-            `Cannot connect to x64dbg plugin at ${this.base_url} after ${attempt + 1} attempts. ` +
-            `Make sure x64dbg is running with the MCP plugin loaded. ` +
-            `Check with 'mcpserver status' in x64dbg command bar.`
+            `Lost connection to x64dbg plugin at ${this.base_url}. ` +
+            `The plugin may have been stopped or x64dbg was closed.`
           );
         }
 
-        // Other errors - limited retry with linear backoff
+        // Other errors - brief retry
         if (attempt < config.retries) {
           await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
         }
