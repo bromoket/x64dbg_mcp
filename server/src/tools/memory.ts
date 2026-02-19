@@ -18,13 +18,19 @@ export function registerMemoryTools(server: McpServer) {
 
   server.tool(
     'write_memory',
-    'Write bytes to a memory address in the debugged process',
+    'Write bytes to a memory address in the debugged process. ' +
+    'Set verify=true to read back after writing and confirm success - ' +
+    'useful when patching write-protected or copy-on-write pages where writes silently fail.',
     {
       address: z.string().describe('Target memory address (hex string or expression)'),
       bytes: z.string().describe('Hex bytes to write (e.g. "90 90 90" or "CC" or "0F FF")'),
+      verify: z.boolean().optional().default(false).describe(
+        'If true, reads back memory after write and verifies it matches. ' +
+        'Detects silent failures on write-protected pages.'
+      ),
     },
-    async ({ address, bytes }) => {
-      const data = await httpClient.post('/api/memory/write', { address, bytes });
+    async ({ address, bytes, verify }) => {
+      const data = await httpClient.post('/api/memory/write', { address, bytes, verify });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

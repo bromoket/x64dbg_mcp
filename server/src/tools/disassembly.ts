@@ -18,12 +18,22 @@ export function registerDisassemblyTools(server: McpServer) {
 
   server.tool(
     'disassemble_function',
-    'Disassemble an entire function containing the given address',
+    'Disassemble an entire function containing the given address. ' +
+    'When no function boundary is found (common with VMP/Themida/packed modules), ' +
+    'falls back to showing max_instructions instructions from the address. ' +
+    'Run analyze first if you get the fallback note.',
     {
       address: z.string().optional().default('cip').describe('Any address within the function (default: CIP)'),
+      max_instructions: z.number().optional().default(50).describe(
+        'Max instructions to show when no function boundary is found (default 50, max 5000). ' +
+        'Increase this for large VMP/obfuscated functions.'
+      ),
     },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/disasm/function', { address });
+    async ({ address, max_instructions }) => {
+      const data = await httpClient.get('/api/disasm/function', {
+        address,
+        max_instructions: String(max_instructions),
+      });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

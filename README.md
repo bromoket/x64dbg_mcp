@@ -2,7 +2,7 @@
 
 A production-grade [Model Context Protocol](https://modelcontextprotocol.io/) server for [x64dbg](https://x64dbg.com/), enabling AI-powered debugging through Claude Code, Claude Desktop, or any MCP-compatible client.
 
-**148 tools** across **21 categories** give an LLM complete control over x64dbg - from basic stepping to advanced tracing, memory dumping, anti-debug bypasses, and control flow analysis.
+**152 tools** across **21 categories** give an LLM complete control over x64dbg - from basic stepping to advanced tracing, memory dumping, anti-debug bypasses, and control flow analysis.
 
 ## Architecture
 
@@ -22,8 +22,8 @@ A production-grade [Model Context Protocol](https://modelcontextprotocol.io/) se
 ```
 
 **Two-component design:**
-- **C++ Plugin** (`x64dbg_mcp.dp64` / `.dp32`) - Lightweight REST API server inside x64dbg with 148 endpoints
-- **TypeScript MCP Server** - Official SDK, stdio transport, 148 typed tools with Zod schemas
+- **C++ Plugin** (`x64dbg_mcp.dp64` / `.dp32`) - Lightweight REST API server inside x64dbg with 152 endpoints
+- **TypeScript MCP Server** - Official SDK, stdio transport, 152 typed tools with Zod schemas
 
 **Why stdio?** No SSE reconnection issues, no port conflicts, no dropped connections. Just works.
 
@@ -37,7 +37,7 @@ A production-grade [Model Context Protocol](https://modelcontextprotocol.io/) se
 
 ## Features
 
-- **148 MCP tools** across 21 categories - full debugger control
+- **152 MCP tools** across 21 categories - full debugger control
 - **Fully typed** - every parameter has a Zod schema with descriptions
 - **Stdio transport** - rock-solid connection (no SSE drops)
 - **Official MCP SDK** - full protocol compliance
@@ -49,11 +49,11 @@ A production-grade [Model Context Protocol](https://modelcontextprotocol.io/) se
 
 | Category | Tools | Description |
 |----------|-------|-------------|
-| Debug Control | 10 | run, pause, step into/over/out, stop, restart, hide debugger, health check |
+| Debug Control | 11 | run, pause, force_pause, step into/over/out, stop, restart, hide debugger, health check |
 | Registers | 5 | get all, get one, set, decode flags, AVX-512 dump |
-| Memory | 9 | read, write, validate, page info, alloc, free, protect, string read, memory map refresh |
-| Disassembly | 4 | disassemble, function view, instruction info, assemble |
-| Breakpoints | 11 | set/delete/enable/disable/toggle software/hardware/memory BPs, conditions, logging |
+| Memory | 9 | read, write (with verify), validate, page info, alloc, free, protect, string read, memory map refresh |
+| Disassembly | 4 | disassemble, function view (with max_instructions), instruction info, assemble |
+| Breakpoints | 14 | set/delete/enable/disable/toggle software/hardware/memory BPs, unified configure, batch configure, conditions, logging, reset hit count |
 | Symbols | 9 | resolve, search, autocomplete, labels, comments, bookmarks, module symbols |
 | Stack | 7 | call stack, read stack, pointers, SEH chain, return address, stack comments, per-thread callstack |
 | Threads | 9 | list, switch, suspend, resume, get info, TEB, thread count, thread name, current thread |
@@ -213,18 +213,19 @@ mcpserver status   - Show server status
 |----------|---------|-------------|
 | `X64DBG_MCP_HOST` | `127.0.0.1` | Plugin REST API host |
 | `X64DBG_MCP_PORT` | `27042` | Plugin REST API port |
-| `X64DBG_MCP_TIMEOUT` | `10000` | Request timeout (ms) |
-| `X64DBG_MCP_RETRIES` | `2` | Request retry count |
+| `X64DBG_MCP_TIMEOUT` | `30000` | Request timeout (ms) |
+| `X64DBG_MCP_RETRIES` | `3` | Request retry count |
 
 ## Tool Reference
 
-### Debug Control (10 tools)
+### Debug Control (11 tools)
 | Tool | Description |
 |------|-------------|
 | `get_health` | Check if the plugin is running and responsive |
 | `get_debug_state` | Get debugger state (stopped/running/paused), CIP, module |
 | `run` | Resume execution |
 | `pause` | Pause execution |
+| `force_pause` | Force pause even when high-frequency fast-resume BPs are active |
 | `step_into` | Single step into calls |
 | `step_over` | Single step over calls |
 | `step_out` | Run until current function returns |
@@ -262,7 +263,7 @@ mcpserver status   - Show server status
 | `get_instruction_info` | Quick info about a single instruction |
 | `assemble` | Assemble an instruction at address |
 
-### Breakpoints (11 tools)
+### Breakpoints (14 tools)
 | Tool | Description |
 |------|-------------|
 | `set_breakpoint` | Set a software breakpoint (INT3) |
@@ -272,10 +273,13 @@ mcpserver status   - Show server status
 | `enable_breakpoint` | Enable a disabled breakpoint |
 | `disable_breakpoint` | Disable without deleting |
 | `toggle_breakpoint` | Toggle between enabled/disabled |
-| `list_breakpoints` | List all active breakpoints |
+| `list_breakpoints` | List all active breakpoints (with resolved symbol labels) |
 | `get_breakpoint` | Get detailed info about a specific breakpoint |
-| `set_breakpoint_condition` | Set a conditional expression on a breakpoint |
+| `set_breakpoint_condition` | Set break_condition on a breakpoint |
 | `set_breakpoint_log` | Set a log message on a breakpoint |
+| `configure_breakpoint` | **Unified**: set + all conditions + command + silent + fast_resume in one call |
+| `configure_breakpoints` | **Batch**: configure multiple breakpoints in one call (e.g. 8 BPs → 1 call) |
+| `reset_breakpoint_hit_count` | Reset hit counter to zero |
 
 ### Symbols (9 tools)
 | Tool | Description |
@@ -482,11 +486,11 @@ x64dbg_mcp/
       bridge/
         c_bridge_executor.*   # Thread-safe bridge to x64dbg API
       handlers/
-        debug_handler.cpp     # Debug control endpoints (9)
+        debug_handler.cpp     # Debug control endpoints (10)
         register_handler.cpp  # Register endpoints (5)
         memory_handler.cpp    # Memory endpoints (9)
         disasm_handler.cpp    # Disassembly endpoints (4)
-        breakpoint_handler.cpp # Breakpoint endpoints (11)
+        breakpoint_handler.cpp # Breakpoint endpoints (14)
         annotation_handler.cpp # Symbols/labels/comments endpoints (5)
         symbol_handler.cpp    # Symbol search endpoints (4)
         stack_handler.cpp     # Stack endpoints (7)

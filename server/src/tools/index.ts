@@ -23,11 +23,11 @@ import { registerControlFlowTools } from './controlflow.js';
 import { registerPatchTools } from './patches.js';
 
 export function registerAllTools(server: McpServer) {
-  registerDebugTools(server);        // 10 tools (+1 get_health)
+  registerDebugTools(server);        // 11 tools (10 + force_pause)
   registerRegisterTools(server);     // 5 tools
   registerMemoryTools(server);       // 9 tools
   registerDisassemblyTools(server);  // 4 tools
-  registerBreakpointTools(server);   // 11 tools
+  registerBreakpointTools(server);   // 14 tools (11 + configure_breakpoint + configure_breakpoints + reset_breakpoint_hit_count)
   registerSymbolTools(server);       // 9 tools
   registerStackTools(server);        // 7 tools
   registerThreadTools(server);       // 9 tools
@@ -40,9 +40,9 @@ export function registerAllTools(server: McpServer) {
   registerDumpingTools(server);      // 9 tools
   registerAntiDebugTools(server);    // 4 tools
   registerExceptionTools(server);    // 5 tools
-  registerProcessTools(server);      // 6 tools (+1 get_basic_process_info)
+  registerProcessTools(server);      // 6 tools
   registerHandleTools(server);       // 6 tools
   registerControlFlowTools(server);  // 7 tools
-  registerPatchTools(server);        // 4 tools (new)
-  // Total: 148 tools
+  registerPatchTools(server);        // 4 tools
+  // Total: 152 tools
 }

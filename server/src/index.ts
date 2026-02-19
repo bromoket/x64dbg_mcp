@@ -11,7 +11,7 @@ async function main() {
     version: '1.0.0',
   });
 
-  // Register all 148 tools
+  // Register all 152 tools
   registerAllTools(server);
 
   // Connect via stdio (rock-solid transport, no connection drops)
@@ -19,7 +19,7 @@ async function main() {
   await server.connect(transport);
 
   // Log to stderr (stdout is used by MCP protocol)
-  console.error(`[x64dbg-mcp] Server started (148 tools), plugin expected at ${config.host}:${config.port}`);
+  console.error(`[x64dbg-mcp] Server started (152 tools), plugin expected at ${config.host}:${config.port}`);
   console.error(`[x64dbg-mcp] Timeout: ${config.timeout}ms, Retries: ${config.retries}`);
 
   // Graceful shutdown

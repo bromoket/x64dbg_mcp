@@ -35,7 +35,9 @@ void register_disasm_routes(c_http_router& router) {
         });
     });
 
-    // GET /api/disasm/function?address=0x... - Disassemble entire function
+    // GET /api/disasm/function?address=0x...&max_instructions=N - Disassemble entire function
+    // max_instructions: used as the fallback count when no function boundary is found
+    // (common with VMP/Themida protected modules). Default: 50. Max: 5000.
     router.get("/api/disasm/function", [](const s_http_request& req) -> s_http_response {
         auto& bridge = get_bridge();
         if (!bridge.require_paused()) {
@@ -45,18 +47,26 @@ void register_disasm_routes(c_http_router& router) {
         auto address_str = req.get_query("address", "cip");
         auto address = bridge.eval_expression(address_str);
 
+        auto max_instr_str = req.get_query("max_instructions", "50");
+        auto fallback_count = std::stoi(max_instr_str);
+        if (fallback_count < 1)    fallback_count = 1;
+        if (fallback_count > 5000) fallback_count = 5000;
+
         // Get function boundaries
         auto bounds = bridge.get_function_bounds(address);
         if (!bounds.has_value()) {
-            // If no function found, just disassemble 50 instructions
-            auto result = bridge.disassemble_at(address, 50);
+            // No function boundary found - common with VMP/packed modules
+            // Use max_instructions parameter so caller can control how much to see
+            auto result = bridge.disassemble_at(address, fallback_count);
             if (!result.has_value()) {
                 return s_http_response::internal_error(result.error());
             }
             return s_http_response::ok({
-                {"address",      format_utils::format_address(address)},
-                {"note",         "No function boundary found, showing 50 instructions"},
-                {"instructions", result.value()}
+                {"address",          format_utils::format_address(address)},
+                {"note",             "No function boundary found (try running 'analyze' first). Showing " +
+                                     std::to_string(fallback_count) + " instructions from address."},
+                {"fallback_count",   fallback_count},
+                {"instructions",     result.value()}
             });
         }
 

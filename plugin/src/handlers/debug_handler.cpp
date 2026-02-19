@@ -3,6 +3,8 @@
 #include "util/format_utils.h"
 
 #include <nlohmann/json.hpp>
+#include <thread>
+#include <chrono>
 
 namespace handlers {
 
@@ -131,6 +133,58 @@ void register_debug_routes(c_http_router& router) {
 
         bridge.exec_command("restart");
         return s_http_response::ok({{"message", "Restart initiated"}});
+    });
+
+    // POST /api/debug/force_pause - Force pause even against high-frequency fast-resume breakpoints
+    // Strategy: temporarily disables all fast-resume breakpoints, issues pause, waits for
+    // paused state, then restores fast-resume. This reliably wins the race that normal
+    // pause loses when 46+ fast-resume hits/sec are occurring.
+    router.post("/api/debug/force_pause", [](const s_http_request&) -> s_http_response {
+        auto& bridge = get_bridge();
+        if (!bridge.is_debugging()) {
+            return s_http_response::conflict("No active debug session");
+        }
+        if (!bridge.is_running()) {
+            return s_http_response::ok({{"message", "Already paused"}});
+        }
+
+        // Collect all normal BPs with fast_resume=true and temporarily disable it
+        std::vector<std::string> fast_resume_addrs;
+        for (auto type : {bp_normal, bp_hardware, bp_memory}) {
+            auto bps = bridge.get_breakpoint_list(type);
+            if (!bps.has_value()) continue;
+            for (const auto& bp : bps.value()) {
+                if (bp.value("fast_resume", false)) {
+                    auto addr_str = bp["address"].get<std::string>();
+                    fast_resume_addrs.push_back(addr_str);
+                    bridge.exec_command("SetBreakpointFastResume " + addr_str + ", 0");
+                }
+            }
+        }
+
+        // Now issue pause - without fast-resume racing, it will succeed
+        bridge.exec_command("pause");
+
+        // Wait up to 3s for paused state
+        bool paused = false;
+        for (int i = 0; i < 300 && !paused; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            paused = !bridge.is_running();
+        }
+
+        // Restore fast-resume on all BPs that had it
+        for (const auto& addr_str : fast_resume_addrs) {
+            bridge.exec_command("SetBreakpointFastResume " + addr_str + ", 1");
+        }
+
+        if (!paused) {
+            return s_http_response::internal_error("Force pause timed out after 3s");
+        }
+
+        return s_http_response::ok({
+            {"message",           "Debuggee forcefully paused"},
+            {"fast_resume_count", fast_resume_addrs.size()}
+        });
     });
 
     // POST /api/debug/run_to - Run to specific address

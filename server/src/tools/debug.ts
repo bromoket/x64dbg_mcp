@@ -102,4 +102,16 @@ export function registerDebugTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'force_pause',
+    'Force the debuggee to pause even when high-frequency fast-resume breakpoints are active. ' +
+    'Normal pause often loses the race against fast-resume BPs firing at high frequency (e.g. 46/sec). ' +
+    'This temporarily disables fast-resume on all breakpoints, sends pause, waits, then restores fast-resume.',
+    {},
+    async () => {
+      const data = await httpClient.post('/api/debug/force_pause');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }

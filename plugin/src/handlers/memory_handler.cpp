@@ -48,6 +48,8 @@ void register_memory_routes(c_http_router& router) {
     });
 
     // POST /api/memory/write - Write bytes to memory
+    // Optional: set "verify": true to read back and confirm the write succeeded.
+    // This detects silent failures on copy-on-write or write-protected pages.
     router.post("/api/memory/write", [](const s_http_request& req) -> s_http_response {
         auto& bridge = get_bridge();
         if (!bridge.require_debugging()) {
@@ -72,10 +74,29 @@ void register_memory_routes(c_http_router& router) {
             return s_http_response::internal_error(result.error());
         }
 
-        return s_http_response::ok({
+        nlohmann::json data = {
             {"address",       format_utils::format_address(address)},
             {"bytes_written", bytes.size()}
-        });
+        };
+
+        // Optional verify: read back and compare
+        auto verify = body.value("verify", false);
+        if (verify) {
+            auto readback = bridge.read_memory(address, bytes.size());
+            if (!readback.has_value()) {
+                data["verified"] = false;
+                data["verify_error"] = "Could not read back memory after write";
+            } else if (readback.value() != bytes) {
+                data["verified"] = false;
+                data["verify_error"] = "Read-back mismatch - write may have failed (page may be write-protected or copy-on-write)";
+                data["written_hex"]  = hex_str;
+                data["actual_hex"]   = format_utils::format_bytes_hex(readback.value().data(), readback.value().size());
+            } else {
+                data["verified"] = true;
+            }
+        }
+
+        return s_http_response::ok(data);
     });
 
     // GET /api/memory/is_valid?address=0x... - Check pointer validity

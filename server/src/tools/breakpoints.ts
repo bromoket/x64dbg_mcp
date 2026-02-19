@@ -131,4 +131,78 @@ export function registerBreakpointTools(server: McpServer) {
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
+
+  server.tool(
+    'configure_breakpoint',
+    'Unified breakpoint configuration in a single call. Creates the BP if needed, then sets all provided fields.\n' +
+    'Replaces the 6-call workflow (set + condition + command_condition + command_text + silent + fast_resume).\n\n' +
+    'IMPORTANT x64dbg expression syntax:\n' +
+    '  - Memory dereference: use [addr] NOT poi(addr). poi() silently fails in breakpoint commands!\n' +
+    '  - Format strings: use {format:expr} NOT {expr:format}\n' +
+    '  - Example break_condition: "0" (never pause), "[esp+8]==11"\n' +
+    '  - Example command_text: "eax=0;eip=[esp];esp=esp+C;run"\n' +
+    '  - Example command_condition: "[esp+8]>=0x675C0000&&[esp+8]<0x67DC3000"',
+    {
+      address: z.string().describe('Breakpoint address (hex string, symbol name, or expression)'),
+      bp_type: z.enum(['software', 'hardware', 'memory']).optional().default('software').describe('Breakpoint type'),
+      singleshot: z.boolean().optional().describe('(software only) Delete after first hit'),
+      hw_type: z.enum(['r', 'w', 'x']).optional().describe('(hardware only) r=read, w=write, x=execute'),
+      hw_size: z.enum(['1', '2', '4', '8']).optional().describe('(hardware only) Size in bytes'),
+      mem_type: z.enum(['a', 'r', 'w', 'x']).optional().describe('(memory only) a=access, r=read, w=write, x=execute'),
+      break_condition: z.string().optional().describe('Condition to PAUSE execution (empty=always, "0"=never, "[eax]==5")'),
+      command_condition: z.string().optional().describe('Condition to run command_text (empty=always, "[esp+8]==11")'),
+      command_text: z.string().optional().describe('x64dbg commands to run on hit (e.g. "eax=0;eip=[esp];esp=esp+C;run")'),
+      log_text: z.string().optional().describe('Log format string on hit (e.g. "{p:[esp]} called")'),
+      log_condition: z.string().optional().describe('Condition to log (empty=always)'),
+      silent: z.boolean().optional().describe('Suppress log output'),
+      fast_resume: z.boolean().optional().describe('Resume immediately without pausing (for non-intrusive BP monitoring)'),
+      name: z.string().optional().describe('Human-readable name for this breakpoint'),
+    },
+    async (params) => {
+      const data = await httpClient.post('/api/breakpoints/configure', params);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'configure_breakpoints',
+    'Batch configure multiple breakpoints in a single call. ' +
+    'Reduces 48 MCP calls (8 BPs × 6 calls each) to a single call. ' +
+    'Each entry in the breakpoints array has the same fields as configure_breakpoint.',
+    {
+      breakpoints: z.array(z.object({
+        address: z.string().describe('Breakpoint address'),
+        bp_type: z.enum(['software', 'hardware', 'memory']).optional(),
+        singleshot: z.boolean().optional(),
+        hw_type: z.string().optional(),
+        hw_size: z.string().optional(),
+        mem_type: z.string().optional(),
+        break_condition: z.string().optional(),
+        command_condition: z.string().optional(),
+        command_text: z.string().optional(),
+        log_text: z.string().optional(),
+        log_condition: z.string().optional(),
+        silent: z.boolean().optional(),
+        fast_resume: z.boolean().optional(),
+        name: z.string().optional(),
+      })).describe('Array of breakpoint configurations'),
+    },
+    async ({ breakpoints }) => {
+      const data = await httpClient.post('/api/breakpoints/configure_batch', { breakpoints });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'reset_breakpoint_hit_count',
+    'Reset the hit counter for a breakpoint to zero. ' +
+    'Useful when testing bypass configurations to get a clean delta from a known baseline.',
+    {
+      address: z.string().describe('Address of the breakpoint whose hit count to reset'),
+    },
+    async ({ address }) => {
+      const data = await httpClient.post('/api/breakpoints/reset_hit_count', { address });
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
 }
