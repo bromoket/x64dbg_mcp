@@ -1,5 +1,8 @@
 # x64dbg MCP Server
 
+[![npm version](https://img.shields.io/npm/v/x64dbg-mcp-server)](https://www.npmjs.com/package/x64dbg-mcp-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A production-grade [Model Context Protocol](https://modelcontextprotocol.io/) server for [x64dbg](https://x64dbg.com/), enabling AI-powered debugging through Claude Code, Claude Desktop, or any MCP-compatible client.
 
 **152 tools** across **21 categories** give an LLM complete control over x64dbg - from basic stepping to advanced tracing, memory dumping, anti-debug bypasses, and control flow analysis.
@@ -135,7 +138,17 @@ Start x64dbg. The plugin auto-starts the REST API on `127.0.0.1:27042`. You shou
 
 ### Server
 
-The TypeScript server runs via Node.js. No global install needed - just point your MCP client at the built `index.js`.
+The TypeScript server is published on npm. No build needed - just use `npx`:
+
+```
+npx x64dbg-mcp-server
+```
+
+Or install globally:
+
+```
+npm install -g x64dbg-mcp-server
+```
 
 ## Configuration
 
@@ -147,28 +160,8 @@ Add to your project-level `.claude/settings.json`:
 {
   "mcpServers": {
     "x64dbg": {
-      "command": "node",
-      "args": ["path/to/x64dbg_mcp/server/dist/index.js"],
-      "env": {
-        "X64DBG_MCP_HOST": "127.0.0.1",
-        "X64DBG_MCP_PORT": "27042"
-      }
-    }
-  }
-}
-```
-
-Or use npx if the server is published:
-```json
-{
-  "mcpServers": {
-    "x64dbg": {
       "command": "npx",
-      "args": ["x64dbg-mcp-server"],
-      "env": {
-        "X64DBG_MCP_HOST": "127.0.0.1",
-        "X64DBG_MCP_PORT": "27042"
-      }
+      "args": ["x64dbg-mcp-server"]
     }
   }
 }
@@ -182,12 +175,8 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "x64dbg": {
-      "command": "node",
-      "args": ["path/to/x64dbg_mcp/server/dist/index.js"],
-      "env": {
-        "X64DBG_MCP_HOST": "127.0.0.1",
-        "X64DBG_MCP_PORT": "27042"
-      }
+      "command": "npx",
+      "args": ["x64dbg-mcp-server"]
     }
   }
 }
