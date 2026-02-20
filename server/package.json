@@ -1,17 +1,42 @@
 {
   "name": "x64dbg-mcp-server",
-  "version": "1.0.0",
-  "description": "MCP server for x64dbg debugger integration",
+  "version": "1.1.0",
+  "description": "MCP server for x64dbg debugger - 152 tools for AI-powered reverse engineering and debugging",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "x64dbg-mcp-server": "dist/index.js"
   },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.js.map"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "dev": "tsc --watch"
   },
+  "keywords": [
+    "mcp",
+    "x64dbg",
+    "debugger",
+    "reverse-engineering",
+    "model-context-protocol",
+    "claude",
+    "ai-debugging"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bromoket/x64dbg_mcp.git",
+    "directory": "server"
+  },
+  "homepage": "https://github.com/bromoket/x64dbg_mcp#readme",
+  "bugs": {
+    "url": "https://github.com/bromoket/x64dbg_mcp/issues"
+  },
+  "author": "bromo",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "zod": "^3.25.1"
