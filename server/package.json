@@ -1,6 +1,6 @@
 {
   "name": "x64dbg-mcp-server",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server for x64dbg debugger - 152 tools for AI-powered reverse engineering and debugging",
   "type": "module",
   "main": "dist/index.js",
