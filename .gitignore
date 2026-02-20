@@ -40,8 +40,6 @@ test/
 # Analysis notes
 anticheat_analysis.md
 
-# Local install script (has your personal x64dbg path)
-install.ps1
 
 # Claude
 .claude/
