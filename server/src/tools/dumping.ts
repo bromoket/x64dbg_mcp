@@ -15,7 +15,8 @@ export function registerDumpingTools(server: McpServer) {
         z.object({ action: z.literal("entry_point"), module: z.string() }),
         z.object({ action: z.literal("relocations"), address: z.string() }),
         z.object({ action: z.literal("dump_module"), module: z.string(), file: z.string().optional().default("") }),
-        z.object({ action: z.literal("fix_iat"), oep: z.string() })
+        z.object({ action: z.literal("fix_iat"), oep: z.string() }),
+        z.object({ action: z.literal("export_patch_file"), filename: z.string().describe("Output path for .1337 patch file") })
       ])
     },
     async ({ action }) => {
@@ -29,6 +30,7 @@ export function registerDumpingTools(server: McpServer) {
         case 'relocations': data = await httpClient.get('/api/dump/relocations', { address: action.address }); break;
         case 'dump_module': data = await httpClient.post('/api/dump/module', { module: action.module, file: action.file }); break;
         case 'fix_iat': data = await httpClient.post('/api/dump/fix_iat', { oep: action.oep }); break;
+        case 'export_patch_file': data = await httpClient.post('/api/patches/export_file', { filename: action.filename }); break;
       }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }

@@ -4,7 +4,7 @@ import { httpClient } from '../http_client.js';
 
 export function registerAnalysisTools(server: McpServer) {
   server.tool(
-    'get_analysis_info',
+    'x64dbg_analysis',
     'Get function info, xrefs, basic blocks or source location for an address',
     {
       action: z.enum(['function', 'xrefs_to', 'xrefs_from', 'basic_blocks', 'source', 'mnemonic_brief']).describe('Information to get'),
@@ -25,7 +25,7 @@ export function registerAnalysisTools(server: McpServer) {
   );
 
   server.tool(
-    'list_database_info',
+    'x64dbg_database',
     'List known constants, error codes, defined structs, or search strings in a module',
     {
       action: z.enum(['constants', 'error_codes', 'structs', 'strings']).describe('Type of list to retrieve'),
@@ -47,7 +47,7 @@ export function registerAnalysisTools(server: McpServer) {
   );
 
   server.tool(
-    'convert_address',
+    'x64dbg_address_convert',
     'Convert Virtual Address (VA) to File Offset, or File Offset to VA',
     {
       action: z.enum(['va_to_file', 'file_to_va']).describe('Conversion direction'),
@@ -69,7 +69,7 @@ export function registerAnalysisTools(server: McpServer) {
   );
 
   server.tool(
-    'is_watchdog_triggered',
+    'x64dbg_watchdog',
     'Check if a watch expression watchdog has been triggered',
     {
       id: z.string().optional().default('0').describe('Watch ID (decimal)'),

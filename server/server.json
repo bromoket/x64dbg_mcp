@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.bromoket/x64dbg",
-  "description": "MCP server for x64dbg debugger - 20 mega-tools for AI-powered reverse engineering and debugging",
+  "description": "MCP server for x64dbg debugger - 23 mega-tools for AI-powered reverse engineering and debugging",
   "repository": {
     "url": "https://github.com/bromoket/x64dbg_mcp",
     "source": "github"
   },
-  "version": "2.0.1",
+  "version": "2.1.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "x64dbg-mcp-server",
-      "version": "2.0.1",
+      "version": "2.1.0",
       "transport": {
         "type": "stdio"
       },

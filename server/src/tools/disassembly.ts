@@ -45,7 +45,7 @@ export function registerDisassemblyTools(server: McpServer) {
           data = await httpClient.get('/api/disasm/basic', { address: action.address });
           break;
         case 'assemble':
-          data = await httpClient.post('/api/disasm/assemble', { address: (action as any).address, instruction: (action as any).instruction });
+          data = await httpClient.post('/api/disasm/assemble', { address: action.address, instruction: action.instruction });
           break;
       }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };

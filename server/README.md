@@ -4,11 +4,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
 
-An [MCP server](https://modelcontextprotocol.io/) that gives AI assistants full control over the [x64dbg](https://x64dbg.com/) debugger. **20 powerful mega-tools** using Zod discriminated unions - stepping, breakpoints, memory, disassembly, tracing, anti-debug bypasses, control flow analysis, and more.
+An [MCP server](https://modelcontextprotocol.io/) that gives AI assistants full control over the [x64dbg](https://x64dbg.com/) debugger. **23 mega-tools** covering 151 REST endpoints via Zod discriminated unions - stepping, breakpoints, memory, disassembly, tracing, anti-debug bypasses, control flow analysis, PE dumping, and more.
 
 ## Quick Start
 
-### What You Need
+### Prerequisites
 
 1. **x64dbg** - [Download latest snapshot](https://github.com/x64dbg/x64dbg/releases)
 2. **Node.js** >= 18 - [Download](https://nodejs.org/)
@@ -25,8 +25,6 @@ Start x64dbg. You should see: `[MCP] x64dbg MCP Server started on 127.0.0.1:2704
 
 ### Step 2: Add to Your AI Client
 
-Pick your client and copy the config:
-
 <details open>
 <summary><b>Claude Code</b></summary>
 
@@ -38,12 +36,7 @@ Add to `.claude/settings.json` (project-level) or `~/.claude/settings.json` (glo
     "x64dbg": {
       "type": "stdio",
       "command": "cmd",
-      "args": [
-        "/c",
-        "npx",
-        "-y",
-        "x64dbg-mcp-server"
-      ]
+      "args": ["/c", "npx", "-y", "x64dbg-mcp-server"]
     }
   }
 }
@@ -157,23 +150,78 @@ Open any executable in x64dbg, then talk to your AI assistant:
 
 ## How It Works
 
-The system has two components:
+```
+ MCP Client  ──stdio──>  TypeScript MCP Server  ──HTTP──>  C++ Plugin (inside x64dbg)
+ (Claude,                 23 mega-tools                     151 REST endpoints
+  Cursor)                 Zod validation                    127.0.0.1:27042
+```
 
-- **C++ Plugin** (`x64dbg_mcp.dp64` / `.dp32`) runs inside x64dbg as a lightweight REST API server on `127.0.0.1:27042`. It wraps the x64dbg Bridge/Plugin SDK with 152 JSON endpoints.
+- **C++ Plugin** runs inside x64dbg as a REST API on `127.0.0.1:27042`, wrapping the x64dbg Bridge/Plugin SDK with 151 JSON endpoints.
+- **TypeScript MCP Server** (this package) implements the MCP protocol over stdio. 23 mega-tools use Zod discriminated unions to validate parameters and route to the correct endpoint.
 
-- **TypeScript MCP Server** (`x64dbg-mcp-server` on npm) implements the MCP protocol over stdio. The 20 mega-tools use Zod discriminated unions to validate parameters before routing requests to one of the 152 specific REST endpoints on the plugin via localhost HTTP.
+The server waits up to 2 minutes for the plugin, health-checks every 15 seconds, and auto-reconnects if x64dbg restarts. Requests retry up to 3 times.
 
-The MCP server waits up to 2 minutes for the plugin to become available, performs health checks every 15 seconds, and automatically reconnects if x64dbg restarts. Requests retry up to 3 times with exponential backoff.
+## Tool Reference (23 Mega-Tools)
 
-**Why stdio?** No SSE reconnection issues, no port conflicts, no dropped connections. The MCP client spawns the server as a child process - it just works.
+Each tool accepts an `action` parameter that selects the specific operation.
 
-## Tech Stack
+### Debugger Control
 
-- **Runtime**: Node.js >= 18
-- **Language**: TypeScript (ES2022, strict mode)
-- **MCP SDK**: `@modelcontextprotocol/sdk` - official MCP SDK
-- **Validation**: `zod` - runtime type checking for all 152 tool schemas
-- **Transport**: stdio (stdin/stdout)
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `x64dbg_debug` | `run`, `pause`, `force_pause`, `step_into`, `step_over`, `step_out`, `stop_debug`, `restart_debug`, `run_to_address`, `state` | Control execution flow and query debugger state |
+| `x64dbg_command` | `execute`, `script`, `evaluate`, `format`, `set_init_script`, `get_init_script`, `get_hash`, `get_events` | Execute raw x64dbg commands, batch scripts, and expression evaluation |
+
+### CPU & Memory
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `x64dbg_registers` | `get_all`, `get_specific`, `get_flags`, `get_avx512`, `set` | Read/write CPU registers including GPR, flags, and AVX-512 |
+| `x64dbg_memory` | `read`, `write`, `info`, `is_valid`, `is_code`, `allocate`, `free`, `protect`, `map`, `update_map` | Full memory operations: read, write, allocate, protect, and memory map |
+| `x64dbg_stack` | `get_call_stack`, `read`, `pointers`, `seh_chain`, `return_address`, `comment` | Call stack unwinding, raw stack reads, SEH chain, return address |
+
+### Code Analysis
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `x64dbg_disassembly` | `at_address`, `function`, `info`, `assemble` | Disassemble instructions, whole functions, or assemble new code |
+| `x64dbg_analysis` | `function`, `xrefs_to`, `xrefs_from`, `basic_blocks`, `source`, `mnemonic_brief` | Cross-references, function boundaries, basic blocks, source mapping |
+| `x64dbg_control_flow` | `cfg`, `branch_dest`, `is_jump_taken`, `loops`, `func_type`, `add_function`, `delete_function` | Control flow graph, branch analysis, loop detection |
+| `x64dbg_database` | `constants`, `error_codes`, `structs`, `strings` | Query x64dbg's analysis database |
+| `x64dbg_address_convert` | `va_to_file`, `file_to_va` | Convert between virtual addresses and file offsets |
+| `x64dbg_watchdog` | *(id parameter)* | Check if a watch expression watchdog triggered |
+
+### Breakpoints & Tracing
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `x64dbg_breakpoints` | `set_software`, `set_hardware`, `set_memory`, `delete`, `enable`, `disable`, `toggle`, `set_condition`, `set_log`, `reset_hit_count`, `get`, `list`, `configure`, `configure_batch` | Full breakpoint management: software, hardware, memory, conditional, logging, batch |
+| `x64dbg_tracing` | `into`, `over`, `run`, `stop`, `animate`, `conditional_run`, `log_setup`, `hitcount`, `type`, `set_type` | Execution tracing, trace logging, hit counters |
+| `x64dbg_exceptions` | `set`, `delete`, `list`, `list_codes`, `skip` | Exception breakpoints and exception handling |
+
+### Symbols & Annotations
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `x64dbg_symbols` | `resolve`, `address`, `search`, `list_module`, `get_label`, `set_label`, `get_comment`, `set_comment`, `bookmark` | Symbol resolution, labels, comments, bookmarks |
+| `x64dbg_search` | `pattern`, `string`, `string_at`, `symbol_auto_complete`, `encode_type` | AOB/byte pattern scan, string search, symbol autocomplete |
+| `x64dbg_modules` | `list`, `get_info`, `get_base`, `get_section`, `get_party` | Loaded modules, base addresses, sections |
+
+### Process & System
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `x64dbg_process` | `basic`, `detailed`, `cmdline`, `elevated`, `dbversion`, `set_cmdline` | Process info, PID, PEB, elevation status |
+| `x64dbg_threads` | `list`, `current`, `count`, `info`, `teb`, `name`, `switch`, `suspend`, `resume` | Thread enumeration, TEB, thread control |
+| `x64dbg_handles` | `list_handles`, `list_tcp`, `list_windows`, `list_heaps`, `get_name`, `close` | Handles, TCP connections, windows, heaps |
+| `x64dbg_antidebug` | `peb`, `teb`, `dep`, `hide_debugger` | PEB/TEB inspection, DEP, hide debugger |
+
+### Patching & Dumping
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `x64dbg_patches` | `list`, `apply`, `restore`, `export` | Apply byte patches, restore originals, export patched module |
+| `x64dbg_dumping` | `pe_header`, `sections`, `imports`, `exports`, `entry_point`, `relocations`, `dump_module`, `fix_iat`, `export_patch_file` | PE analysis, module dumping, IAT reconstruction, patch file export |
 
 ## Configuration
 
@@ -184,7 +232,7 @@ The MCP server waits up to 2 minutes for the plugin to become available, perform
 | `X64DBG_MCP_TIMEOUT` | `30000` | Request timeout (ms) |
 | `X64DBG_MCP_RETRIES` | `3` | Retry count on transient failures |
 
-## Plugin Commands
+### Plugin Commands
 
 Control the REST API from the x64dbg command bar:
 
@@ -194,89 +242,14 @@ mcpserver stop      Stop the HTTP server
 mcpserver status    Show server status and port
 ```
 
-## Tool Reference (20 Mega-Tools)
-
-The server exposes exactly **20 powerful mega-tools** using Zod discriminated unions. When calling a tool, provide the `action` argument to determine the exact operation.
-
-| Tool | Actions (Operations) | Description |
-|------|-----------|-------------|
-| `x64dbg_debug` | `run`, `pause`, `force_pause`, `step_into`, `step_over`, `step_out`, `stop_debug`, `restart_debug`, `run_to_address`, `state` | Control debugger execution and query current state |
-| `x64dbg_registers` | `all`, `specific`, `flags`, `avx512`, `set_register` | Read or write CPU registers |
-| `x64dbg_memory` | `read`, `write`, `info`, `is_valid`, `is_code`, `allocate`, `free`, `protect`, `map`, `update_map` | Read, write, allocate, and analyze memory regions |
-| `x64dbg_disassembly` | `disassemble`, `disassemble_function`, `instruction_info`, `assemble` | Assemble/disassemble code and analyze instructions |
-| `x64dbg_breakpoints`| `set_software`, `set_hardware`, `set_memory`, `delete`, `enable`, `disable`, `toggle`, `set_condition`, `set_log`, `reset_hit_count`, `list`, `configure`, `configure_batch` | Comprehensive breakpoint management |
-| `x64dbg_symbols` | `resolve_name`, `resolve_address`, `search_pattern`, `list_module`, `get_label`, `set_label`, `get_comment`, `set_comment`, `set_bookmark`, `clear_bookmark` | Resolve symbols, names, labels, and bookmarks |
-| `x64dbg_stack` | `get_call_stack`, `read`, `pointers`, `seh_chain`, `return_address`, `comment` | Call stack and stack memory analysis |
-| `x64dbg_threads` | `list`, `current`, `count`, `info`, `teb`, `name`, `switch`, `suspend`, `resume` | Thread enumeration and control |
-| `x64dbg_modules` | `list`, `get_info`, `get_base`, `get_section`, `get_party` | Inspect loaded modules and sections |
-| `x64dbg_search` | `pattern`, `string`, `string_at`, `symbol_auto_complete`, `encode_type` | Search memory for byte patterns or strings |
-| `x64dbg_command` | `execute`, `evaluate`, `format`, `execute_script`, `init_script_get`, `init_script_set`, `db_hash`, `events` | Execute raw x64dbg commands, scripts, or evaluate expressions |
-| `x64dbg_analysis` | `xrefs_to`, `xrefs_from`, `function_info`, `basic_blocks`, `strings`, `source`, `mnemonic`, `constants`, `errors`, `structs`, `va_to_file`, `file_to_va` | Deep binary analysis, cross-references, and database querying |
-| `x64dbg_tracing` | `into`, `over`, `run`, `stop`, `log_setup`, `animate`, `conditional_run`, `hit_count`, `branch_dest`, `will_jump`, `set_record_type` | Advanced execution tracing and hit-counters |
-| `x64dbg_dumping` | `dump_module`, `pe_header`, `sections`, `imports`, `exports`, `relocations`, `entry_point`, `fix_iat` | Dump modules from memory and manipulate PE headers |
-| `x64dbg_antidebug` | `hide_debugger`, `peb`, `teb`, `dep` | Patch PEB/TEB to bypass anti-debugging protections |
-| `x64dbg_exceptions`| `set`, `delete`, `list`, `list_codes`, `skip` | Manage exception handling and breakpoints |
-| `x64dbg_process` | `basic`, `detailed`, `cmdline`, `elevated`, `dbversion`, `set_cmdline` | Query process info and manipulate command arguments |
-| `x64dbg_handles` | `list_handles`, `list_tcp`, `list_windows`, `list_heaps`, `get_name`, `close` | Inspect handles, networking, and windows associated with the process |
-| `x64dbg_control_flow`| `cfg`, `branch_dest`, `is_jump_taken`, `loops`, `func_type`, `add_function`, `delete_function` | Perform control-flow graph (CFG) analysis |
-| `x64dbg_patches` | `list`, `apply`, `restore`, `export` | Apply and export inline byte patches |
-
-## Usage Examples
-
-**Basic debugging:**
-```
-"Set a breakpoint on kernel32.CreateFileW and run"
-"Step over 10 instructions and show me the registers"
-"What's the current call stack?"
-```
-
-**Memory analysis:**
-```
-"Read 128 bytes at the address pointed to by RDI"
-"Search for the byte pattern FF 15 ?? ?? ?? ?? in the .text section"
-"Write 90 90 90 (NOPs) at 0x401000 and verify the write"
-```
-
-**Reverse engineering:**
-```
-"Disassemble the current function and explain the algorithm"
-"Get the control flow graph and identify the switch cases"
-"Show me cross-references to this function - who calls it?"
-"List all imports from kernel32 and advapi32"
-```
-
-**Anti-debug bypass:**
-```
-"Hide the debugger from anti-debug checks"
-"Show me the PEB fields - is BeingDebugged set?"
-"Set an exception breakpoint on STATUS_ACCESS_VIOLATION"
-```
-
-**Tracing and logging:**
-```
-"Configure a logging breakpoint on GetProcAddress that logs the function name"
-"Set up 8 breakpoints in one call using configure_breakpoints"
-"Trace into this function and log every instruction to trace.log"
-```
-
-**Process inspection:**
-```
-"List all threads and tell me which one is the main thread"
-"Show me all open file handles in this process"
-"List TCP connections - is it phoning home?"
-"Dump the main module to disk and fix the import table"
-```
-
 ## Troubleshooting
 
 ### "Connection refused" or server can't reach plugin
 
-Make sure:
-1. x64dbg is running with a target loaded
-2. The MCP plugin is installed in the correct `plugins/` directory
-3. You see `[MCP] x64dbg MCP Server started on 127.0.0.1:27042` in the x64dbg log
-
-Test connectivity: `curl http://127.0.0.1:27042/api/debug/state`
+1. Make sure x64dbg is running with a target loaded
+2. Verify the plugin is in the correct `plugins/` directory
+3. Check the x64dbg log for `[MCP] x64dbg MCP Server started on 127.0.0.1:27042`
+4. Test manually: `curl http://127.0.0.1:27042/api/health`
 
 ### "Waiting for x64dbg plugin..." hangs
 
@@ -284,27 +257,18 @@ The server waits up to 2 minutes for the plugin. Start x64dbg **before** your MC
 
 ### Tools return errors about debugger state
 
-- **Paused required**: Most inspection tools (registers, memory, disassembly) need the target to be paused
-- **Running required**: `pause` and `force_pause` need the target to be running
-- **Loaded required**: A target executable must be loaded in x64dbg
+- **"Debugger must be paused"**: Inspection tools need paused state - hit a breakpoint or use pause first
+- **"No active debug session"**: Load a target in x64dbg (`File > Open`)
+- **"Debugger must be running"**: `pause`/`force_pause` need the target running
 
 ### 32-bit vs 64-bit
 
-Use the correct plugin for your target:
-- 64-bit process: x64dbg with `x64dbg_mcp.dp64`
-- 32-bit process: x32dbg with `x64dbg_mcp.dp32`
+| Target | Debugger | Plugin |
+|--------|----------|--------|
+| 64-bit | x64dbg | `x64dbg_mcp.dp64` |
+| 32-bit | x32dbg | `x64dbg_mcp.dp32` |
 
-Both use the same MCP server - just `npx -y x64dbg-mcp-server`.
-
-### Plugin commands in x64dbg
-
-You can control the REST API from the x64dbg command bar:
-
-```
-mcpserver start     Start the HTTP server
-mcpserver stop      Stop the HTTP server
-mcpserver status    Show server status and port
-```
+Both use the same MCP server.
 
 ## Security
 

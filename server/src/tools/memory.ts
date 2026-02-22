@@ -71,8 +71,8 @@ export function registerMemoryTools(server: McpServer) {
           payload = { address: action.address, size: action.size, protection: action.protection };
           break;
         case 'map':
-          if ((action as any).address) {
-            return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memmap/at', { address: (action as any).address }), null, 2) }] };
+          if (action.address) {
+            return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memmap/at', { address: action.address }), null, 2) }] };
           } else {
             return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memmap/list'), null, 2) }] };
           }

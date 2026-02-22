@@ -8,10 +8,10 @@ import { registerAllTools } from './tools/index.js';
 async function main() {
   const server = new McpServer({
     name: 'x64dbg',
-    version: '1.0.0',
+    version: '2.1.0',
   });
 
-  // Register all tools (~78 consolidated down from 152)
+  // Register all tools (23 mega-tools consolidated from 152)
   registerAllTools(server);
 
   // Connect via stdio (rock-solid transport, no connection drops)
@@ -19,7 +19,7 @@ async function main() {
   await server.connect(transport);
 
   // Log to stderr (stdout is used by MCP protocol)
-  console.error(`[x64dbg-mcp] Server started (~78 tools), plugin expected at ${config.host}:${config.port}`);
+  console.error(`[x64dbg-mcp] Server started (23 tools), plugin expected at ${config.host}:${config.port}`);
   console.error(`[x64dbg-mcp] Timeout: ${config.timeout}ms, Retries: ${config.retries}`);
 
   // Graceful shutdown
