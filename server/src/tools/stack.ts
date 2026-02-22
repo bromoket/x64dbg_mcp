@@ -4,58 +4,52 @@ import { httpClient } from '../http_client.js';
 
 export function registerStackTools(server: McpServer) {
   server.tool(
-    'get_call_stack',
-    'Get the call stack for the current or a specific thread',
+    'x64dbg_stack',
+    'Stack operations: call stack, read raw, get pointers/SEH/comments',
     {
-      handle: z.string().optional().describe('Thread handle (hex). If omitted, gets current thread stack.'),
-      max_depth: z.string().optional().default('50').describe('Maximum stack frames to retrieve (default 50)')
+      action: z.discriminatedUnion("action", [
+        z.object({
+          action: z.literal("get_call_stack"),
+          handle: z.string().optional().describe("Thread handle (hex)"),
+          max_depth: z.string().optional().default("50")
+        }),
+        z.object({
+          action: z.literal("read"),
+          address: z.string().optional().default("csp"),
+          size: z.string().optional().default("256")
+        }),
+        z.object({ action: z.literal("pointers") }),
+        z.object({ action: z.literal("seh_chain") }),
+        z.object({ action: z.literal("return_address") }),
+        z.object({ action: z.literal("comment"), address: z.string() })
+      ])
     },
-    async ({ handle, max_depth }) => {
+    async ({ action }) => {
       let data: any;
-      if (handle) {
-         data = await httpClient.get('/api/stack/callstack_thread', { handle });
-      } else {
-         data = await httpClient.get('/api/stack/trace', { max_depth });
-      }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'read_stack',
-    'Read raw stack memory as pointer-sized entries with symbol resolution',
-    {
-      address: z.string().optional().default('csp').describe('Stack address (default: csp)'),
-      size: z.string().optional().default('256').describe('Number of bytes to read (default 256)'),
-    },
-    async ({ address, size }) => {
-      const data = await httpClient.get('/api/stack/read', { address, size });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_stack_info',
-    'Query information about the stack (pointers, SEH chain, comments, or top return address)',
-    {
-      action: z.enum(['pointers', 'seh_chain', 'comment', 'return_address']).describe('Type of info to get'),
-      address: z.string().optional().describe('Stack address (required only for "comment" action)')
-    },
-    async ({ action, address }) => {
-      let endpoint = '';
-      let params: any = {};
-
-      switch (action) {
-        case 'pointers': endpoint = '/api/stack/pointers'; break;
-        case 'seh_chain': endpoint = '/api/stack/seh_chain'; break;
-        case 'return_address': endpoint = '/api/stack/return_address'; break;
+      switch (action.action) {
+        case 'get_call_stack':
+          if (action.handle) {
+            data = await httpClient.get('/api/stack/callstack_thread', { handle: action.handle });
+          } else {
+            data = await httpClient.get('/api/stack/trace', { max_depth: action.max_depth });
+          }
+          break;
+        case 'read':
+          data = await httpClient.get('/api/stack/read', { address: action.address, size: action.size });
+          break;
+        case 'pointers':
+          data = await httpClient.get('/api/stack/pointers');
+          break;
+        case 'seh_chain':
+          data = await httpClient.get('/api/stack/seh_chain');
+          break;
+        case 'return_address':
+          data = await httpClient.get('/api/stack/return_address');
+          break;
         case 'comment':
-          endpoint = '/api/stack/comment';
-          if (!address) throw new Error("address is required for comment action");
-          params.address = address;
+          data = await httpClient.get('/api/stack/comment', { address: action.address });
           break;
       }
-      const data = await httpClient.get(endpoint, params);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

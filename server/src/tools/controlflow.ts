@@ -4,42 +4,29 @@ import { httpClient } from '../http_client.js';
 
 export function registerControlFlowTools(server: McpServer) {
   server.tool(
-    'get_control_flow_info',
-    'Get CFG, branch destinations, jump states, loops, or function block type',
+    'x64dbg_control_flow',
+    'Get CFG/branch/loop info or manage function definitions',
     {
-      action: z.enum(['cfg', 'branch_dest', 'is_jump_taken', 'loops', 'func_type']).describe('Information to get'),
-      address: z.string().optional().default('cip').describe('Address to inspect')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("cfg"), address: z.string().optional().default("cip") }),
+        z.object({ action: z.literal("branch_dest"), address: z.string().optional().default("cip") }),
+        z.object({ action: z.literal("is_jump_taken"), address: z.string().optional().default("cip") }),
+        z.object({ action: z.literal("loops"), address: z.string().optional().default("cip") }),
+        z.object({ action: z.literal("func_type"), address: z.string().optional().default("cip") }),
+        z.object({ action: z.literal("add_function"), start: z.string(), end: z.string() }),
+        z.object({ action: z.literal("delete_function"), address: z.string() })
+      ])
     },
-    async ({ action, address }) => {
+    async ({ action }) => {
       let data: any;
-      switch (action) {
-        case 'cfg': data = await httpClient.get('/api/cfg/function', { address }); break;
-        case 'branch_dest': data = await httpClient.get('/api/cfg/branch_dest', { address }); break;
-        case 'is_jump_taken': data = await httpClient.get('/api/cfg/is_jump_taken', { address }); break;
-        case 'loops': data = await httpClient.get('/api/cfg/loops', { address }); break;
-        case 'func_type': data = await httpClient.get('/api/cfg/func_type', { address }); break;
-      }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'manage_function_definitions',
-    'Add or delete function boundaries in the x64dbg database',
-    {
-      action: z.enum(['add', 'delete']).describe('Action to perform'),
-      start: z.string().optional().describe('Start address (required for add)'),
-      end: z.string().optional().describe('End address (required for add)'),
-      address: z.string().optional().describe('Address within function to delete (required for delete)')
-    },
-    async ({ action, start, end, address }) => {
-      let data: any;
-      if (action === 'add') {
-        if (!start || !end) throw new Error("start and end are required for add");
-        data = await httpClient.post('/api/cfg/add_function', { start, end });
-      } else {
-        if (!address) throw new Error("address is required for delete");
-        data = await httpClient.post('/api/cfg/delete_function', { address });
+      switch (action.action) {
+        case 'cfg': data = await httpClient.get('/api/cfg/function', { address: action.address }); break;
+        case 'branch_dest': data = await httpClient.get('/api/cfg/branch_dest', { address: action.address }); break;
+        case 'is_jump_taken': data = await httpClient.get('/api/cfg/is_jump_taken', { address: action.address }); break;
+        case 'loops': data = await httpClient.get('/api/cfg/loops', { address: action.address }); break;
+        case 'func_type': data = await httpClient.get('/api/cfg/func_type', { address: action.address }); break;
+        case 'add_function': data = await httpClient.post('/api/cfg/add_function', { start: action.start, end: action.end }); break;
+        case 'delete_function': data = await httpClient.post('/api/cfg/delete_function', { address: action.address }); break;
       }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }

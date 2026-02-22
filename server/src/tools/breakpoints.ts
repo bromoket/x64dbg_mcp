@@ -4,131 +4,138 @@ import { httpClient } from '../http_client.js';
 
 export function registerBreakpointTools(server: McpServer) {
   server.tool(
-    'manage_breakpoint',
-    'Set, get, toggle, enable, disable, delete, or reset breakpoints.',
+    'x64dbg_breakpoints',
+    'Unified tool for all breakpoint operations (set, get, list, configure, toggle, remove)',
     {
-      action: z.enum([
-        'set_software', 'set_hardware', 'set_memory',
-        'delete', 'enable', 'disable', 'toggle',
-        'set_condition', 'set_log', 'reset_hit_count', 'get'
-      ]).describe('The breakpoint action to perform'),
-      address: z.string().describe('Address of the breakpoint (hex string, symbol name, or expression)'),
-      type: z.enum(['software', 'hardware', 'memory', 'r', 'w', 'x', 'a']).optional().describe('Hardware/Memory type or general BP type used for hardware/memory/delete/etc.'),
-      size: z.enum(['1', '2', '4', '8']).optional().describe('Hardware size (1, 2, 4, 8)'),
-      condition: z.string().optional().describe('Condition expression (e.g. "eax==0") for set_condition'),
-      text: z.string().optional().describe('Log format string for set_log'),
-      singleshot: z.boolean().optional().describe('If true, breakpoint is deleted after first hit for software BP')
+      action: z.discriminatedUnion("action", [
+        z.object({
+          action: z.literal("set_software"),
+          address: z.string().describe("Address of the breakpoint"),
+          singleshot: z.boolean().optional()
+        }),
+        z.object({
+          action: z.literal("set_hardware"),
+          address: z.string(),
+          type: z.enum(['r', 'w', 'x']).optional().describe("Hardware BP type (read/write/execute)"),
+          size: z.enum(['1', '2', '4', '8']).optional().describe("Hardware size")
+        }),
+        z.object({
+          action: z.literal("set_memory"),
+          address: z.string(),
+          type: z.enum(['a', 'r', 'w', 'x']).optional().describe("Memory BP type")
+        }),
+        z.object({
+          action: z.literal("delete"),
+          address: z.string(),
+          type: z.enum(['software', 'hardware', 'memory']).optional()
+        }),
+        z.object({ action: z.literal("enable"), address: z.string() }),
+        z.object({ action: z.literal("disable"), address: z.string() }),
+        z.object({ action: z.literal("toggle"), address: z.string() }),
+        z.object({
+          action: z.literal("set_condition"),
+          address: z.string(),
+          condition: z.string().describe("Expression, e.g. eax==0")
+        }),
+        z.object({
+          action: z.literal("set_log"),
+          address: z.string(),
+          text: z.string().describe("Format string for logging")
+        }),
+        z.object({ action: z.literal("reset_hit_count"), address: z.string() }),
+        z.object({ action: z.literal("get"), address: z.string() }),
+        z.object({ action: z.literal("list") }),
+        z.object({
+          action: z.literal("configure"),
+          address: z.string(),
+          bp_type: z.enum(['software', 'hardware', 'memory']).optional().default('software'),
+          singleshot: z.boolean().optional(),
+          hw_type: z.enum(['r', 'w', 'x']).optional(),
+          hw_size: z.enum(['1', '2', '4', '8']).optional(),
+          mem_type: z.enum(['a', 'r', 'w', 'x']).optional(),
+          break_condition: z.string().optional(),
+          command_condition: z.string().optional(),
+          command_text: z.string().optional(),
+          log_text: z.string().optional(),
+          log_condition: z.string().optional(),
+          silent: z.boolean().optional(),
+          fast_resume: z.boolean().optional(),
+          name: z.string().optional()
+        }),
+        z.object({
+          action: z.literal("configure_batch"),
+          breakpoints: z.array(z.object({
+            address: z.string(),
+            bp_type: z.enum(['software', 'hardware', 'memory']).optional(),
+            singleshot: z.boolean().optional(),
+            hw_type: z.string().optional(),
+            hw_size: z.string().optional(),
+            mem_type: z.string().optional(),
+            break_condition: z.string().optional(),
+            command_condition: z.string().optional(),
+            command_text: z.string().optional(),
+            log_text: z.string().optional(),
+            log_condition: z.string().optional(),
+            silent: z.boolean().optional(),
+            fast_resume: z.boolean().optional(),
+            name: z.string().optional()
+          }))
+        })
+      ])
     },
-    async ({ action, address, type, size, condition, text, singleshot }) => {
+    async ({ action }) => {
       let endpoint = '';
-      let payload: any = { address };
+      let payload: any = action.action !== 'list' && action.action !== 'configure_batch'
+        ? { address: (action as any).address }
+        : {};
 
-      switch(action) {
+      switch(action.action) {
         case 'set_software':
           endpoint = '/api/breakpoints/set';
-          payload.singleshot = singleshot || false;
+          payload.singleshot = action.singleshot || false;
           break;
         case 'set_hardware':
           endpoint = '/api/breakpoints/set_hardware';
-          payload.type = type || 'x';
-          payload.size = size || '1';
+          payload.type = action.type || 'x';
+          payload.size = action.size || '1';
           break;
         case 'set_memory':
           endpoint = '/api/breakpoints/set_memory';
-          payload.type = type || 'a';
+          payload.type = action.type || 'a';
           break;
         case 'delete':
           endpoint = '/api/breakpoints/delete';
-          payload.type = ['software', 'hardware', 'memory'].includes(type as string) ? type : 'software';
+          payload.type = action.type;
           break;
         case 'enable': endpoint = '/api/breakpoints/enable'; break;
         case 'disable': endpoint = '/api/breakpoints/disable'; break;
         case 'toggle': endpoint = '/api/breakpoints/toggle'; break;
         case 'set_condition':
           endpoint = '/api/breakpoints/set_condition';
-          if (!condition) throw new Error("condition is required");
-          payload.condition = condition;
+          payload.condition = action.condition;
           break;
         case 'set_log':
           endpoint = '/api/breakpoints/set_log';
-          if (!text) throw new Error("text is required");
-          payload.text = text;
+          payload.text = action.text;
           break;
         case 'reset_hit_count': endpoint = '/api/breakpoints/reset_hit_count'; break;
         case 'get':
-          const getData = await httpClient.get('/api/breakpoints/get', { address });
+          const getData = await httpClient.get('/api/breakpoints/get', { address: action.address });
           return { content: [{ type: 'text', text: JSON.stringify(getData, null, 2) }] };
+        case 'list':
+          const listData = await httpClient.get('/api/breakpoints/list');
+          return { content: [{ type: 'text', text: JSON.stringify(listData, null, 2) }] };
+        case 'configure':
+          endpoint = '/api/breakpoints/configure';
+          payload = { ...action };
+          break;
+        case 'configure_batch':
+          endpoint = '/api/breakpoints/configure_batch';
+          payload = { breakpoints: action.breakpoints };
+          break;
       }
 
       const data = await httpClient.post(endpoint, payload);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'list_breakpoints',
-    'List all breakpoints (software, hardware, and memory)',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/breakpoints/list');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'configure_breakpoint',
-    'Unified breakpoint configuration in a single call. Creates the BP if needed, then sets all provided fields.\n' +
-    'Replaces the 6-call workflow (set + condition + command_condition + command_text + silent + fast_resume).\n\n' +
-    'IMPORTANT x64dbg expression syntax:\n' +
-    '  - Memory dereference: use [addr] NOT poi(addr). poi() silently fails in breakpoint commands!\n' +
-    '  - Format strings: use {format:expr} NOT {expr:format}\n' +
-    '  - Example break_condition: "0" (never pause), "[esp+8]==11"\n' +
-    '  - Example command_text: "eax=0;eip=[esp];esp=esp+C;run"',
-    {
-      address: z.string().describe('Breakpoint address (hex string, symbol name, or expression)'),
-      bp_type: z.enum(['software', 'hardware', 'memory']).optional().default('software'),
-      singleshot: z.boolean().optional(),
-      hw_type: z.enum(['r', 'w', 'x']).optional(),
-      hw_size: z.enum(['1', '2', '4', '8']).optional(),
-      mem_type: z.enum(['a', 'r', 'w', 'x']).optional(),
-      break_condition: z.string().optional(),
-      command_condition: z.string().optional(),
-      command_text: z.string().optional(),
-      log_text: z.string().optional(),
-      log_condition: z.string().optional(),
-      silent: z.boolean().optional(),
-      fast_resume: z.boolean().optional(),
-      name: z.string().optional(),
-    },
-    async (params) => {
-      const data = await httpClient.post('/api/breakpoints/configure', params);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'configure_breakpoints',
-    'Batch configure multiple breakpoints in a single call.',
-    {
-      breakpoints: z.array(z.object({
-        address: z.string().describe('Breakpoint address'),
-        bp_type: z.enum(['software', 'hardware', 'memory']).optional(),
-        singleshot: z.boolean().optional(),
-        hw_type: z.string().optional(),
-        hw_size: z.string().optional(),
-        mem_type: z.string().optional(),
-        break_condition: z.string().optional(),
-        command_condition: z.string().optional(),
-        command_text: z.string().optional(),
-        log_text: z.string().optional(),
-        log_condition: z.string().optional(),
-        silent: z.boolean().optional(),
-        fast_resume: z.boolean().optional(),
-        name: z.string().optional(),
-      })).describe('Array of breakpoint configurations'),
-    },
-    async ({ breakpoints }) => {
-      const data = await httpClient.post('/api/breakpoints/configure_batch', { breakpoints });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

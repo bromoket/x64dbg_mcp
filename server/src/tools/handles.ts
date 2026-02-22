@@ -4,43 +4,28 @@ import { httpClient } from '../http_client.js';
 
 export function registerHandleTools(server: McpServer) {
   server.tool(
-    'get_handle_info',
-    'List all open handles, TCP connections, windows, or heaps in the debugged process',
+    'x64dbg_handles',
+    'List handles/tcp/windows/heaps, get handle name, or close a handle',
     {
-      action: z.enum(['handles', 'tcp', 'windows', 'heaps']).describe('Type of handles/objects to list')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("list_handles") }),
+        z.object({ action: z.literal("list_tcp") }),
+        z.object({ action: z.literal("list_windows") }),
+        z.object({ action: z.literal("list_heaps") }),
+        z.object({ action: z.literal("get_name"), handle: z.string() }),
+        z.object({ action: z.literal("close"), handle: z.string() })
+      ])
     },
     async ({ action }) => {
       let data: any;
-      switch (action) {
-        case 'handles': data = await httpClient.get('/api/handles/list'); break;
-        case 'tcp': data = await httpClient.get('/api/handles/tcp'); break;
-        case 'windows': data = await httpClient.get('/api/handles/windows'); break;
-        case 'heaps': data = await httpClient.get('/api/handles/heaps'); break;
+      switch (action.action) {
+        case 'list_handles': data = await httpClient.get('/api/handles/list'); break;
+        case 'list_tcp': data = await httpClient.get('/api/handles/tcp'); break;
+        case 'list_windows': data = await httpClient.get('/api/handles/windows'); break;
+        case 'list_heaps': data = await httpClient.get('/api/handles/heaps'); break;
+        case 'get_name': data = await httpClient.get('/api/handles/get', { handle: action.handle }); break;
+        case 'close': data = await httpClient.post('/api/handles/close', { handle: action.handle }); break;
       }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_handle_name',
-    'Get the name and type of a specific handle',
-    {
-      handle: z.string().describe('Handle value (hex)'),
-    },
-    async ({ handle }) => {
-      const data = await httpClient.get('/api/handles/get', { handle });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'close_handle',
-    'Force-close a handle in the debugged process. Use with caution as this may cause instability.',
-    {
-      handle: z.string().describe('Handle value to close (hex)'),
-    },
-    async ({ handle }) => {
-      const data = await httpClient.post('/api/handles/close', { handle });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

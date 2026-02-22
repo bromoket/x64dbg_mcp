@@ -4,73 +4,54 @@ import { httpClient } from '../http_client.js';
 
 export function registerSymbolTools(server: McpServer) {
   server.tool(
-    'resolve_symbol',
-    'Resolve symbols, search for symbols, or list symbols from a module',
+    'x64dbg_symbols',
+    'Symbol, label, comment, and bookmark operations',
     {
-      action: z.enum(['name', 'at_address', 'search_pattern', 'list_module']).describe('Action to perform'),
-      query: z.string().describe('The name, address, pattern, or module to search/resolve depending on action'),
-      module: z.string().optional().describe('Optional module name to restrict search_pattern')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("resolve"), name: z.string() }),
+        z.object({ action: z.literal("address"), address: z.string() }),
+        z.object({ action: z.literal("search"), pattern: z.string(), module: z.string().optional() }),
+        z.object({ action: z.literal("list_module"), module: z.string() }),
+        z.object({ action: z.literal("get_label"), address: z.string() }),
+        z.object({ action: z.literal("set_label"), address: z.string(), text: z.string() }),
+        z.object({ action: z.literal("get_comment"), address: z.string() }),
+        z.object({ action: z.literal("set_comment"), address: z.string(), text: z.string() }),
+        z.object({ action: z.literal("bookmark"), address: z.string(), set: z.boolean().optional().default(true) })
+      ])
     },
-    async ({ action, query, module }) => {
-      let endpoint = '';
-      let params: any = {};
-
-      switch (action) {
-        case 'name':
-          endpoint = '/api/symbols/resolve';
-          params.name = query;
+    async ({ action }) => {
+      let data: any;
+      switch (action.action) {
+        case 'resolve':
+          data = await httpClient.get('/api/symbols/resolve', { name: action.name });
           break;
-        case 'at_address':
-          endpoint = '/api/symbols/at';
-          params.address = query;
+        case 'address':
+          data = await httpClient.get('/api/symbols/at', { address: action.address });
           break;
-        case 'search_pattern':
-          endpoint = '/api/symbols/search';
-          params.pattern = query;
-          if (module) params.module = module;
+        case 'search':
+          let searchParams: any = { pattern: action.pattern };
+          if (action.module) searchParams.module = action.module;
+          data = await httpClient.get('/api/symbols/search', searchParams);
           break;
         case 'list_module':
-          endpoint = '/api/symbols/list';
-          params.module = query;
+          data = await httpClient.get('/api/symbols/list', { module: action.module });
+          break;
+        case 'get_label':
+          data = await httpClient.get('/api/labels/get', { address: action.address });
+          break;
+        case 'set_label':
+          data = await httpClient.post('/api/labels/set', { address: action.address, text: action.text });
+          break;
+        case 'get_comment':
+          data = await httpClient.get('/api/comments/get', { address: action.address });
+          break;
+        case 'set_comment':
+          data = await httpClient.post('/api/comments/set', { address: action.address, text: action.text });
+          break;
+        case 'bookmark':
+          data = await httpClient.post('/api/bookmarks/set', { address: action.address, set: action.set });
           break;
       }
-
-      const data = await httpClient.get(endpoint, params);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'manage_annotation',
-    'Get or set user-defined labels and comments at an address',
-    {
-      action: z.enum(['get_label', 'set_label', 'get_comment', 'set_comment']).describe('Action to perform'),
-      address: z.string().describe('Address to label/comment'),
-      text: z.string().optional().describe('Label or comment text (required for set actions)')
-    },
-    async ({ action, address, text }) => {
-      let data: any;
-      if (action.startsWith('get_')) {
-        const type = action === 'get_label' ? 'labels' : 'comments';
-        data = await httpClient.get(`/api/${type}/get`, { address });
-      } else {
-        const type = action === 'set_label' ? 'labels' : 'comments';
-        if (!text) throw new Error("text is required for set actions");
-        data = await httpClient.post(`/api/${type}/set`, { address, text });
-      }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'manage_bookmark',
-    'Set or clear a bookmark at an address',
-    {
-      address: z.string().describe('Address to bookmark'),
-      set: z.boolean().optional().default(true).describe('true to set, false to clear (default: true)'),
-    },
-    async ({ address, set }) => {
-      const data = await httpClient.post('/api/bookmarks/set', { address, set });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

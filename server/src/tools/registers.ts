@@ -4,36 +4,37 @@ import { httpClient } from '../http_client.js';
 
 export function registerRegisterTools(server: McpServer) {
   server.tool(
-    'get_registers',
-    'Get CPU register values (all, specific, flags, avx512)',
+    'x64dbg_registers',
+    'Get or set CPU register values (all, specific, flags, avx512, set)',
     {
-      type: z.enum(['all', 'specific', 'flags', 'avx512']).describe('Type of register info to get'),
-      name: z.string().optional().describe('Register name (e.g. "rax", "eip", "dr0") required for "specific"')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("get_all") }),
+        z.object({ action: z.literal("get_flags") }),
+        z.object({ action: z.literal("get_avx512") }),
+        z.object({
+          action: z.literal("get_specific"),
+          name: z.string().describe("Register name (e.g. 'rax', 'eip', 'dr0')")
+        }),
+        z.object({
+          action: z.literal("set"),
+          name: z.string().describe("Register name (e.g. 'rax', 'rcx')"),
+          value: z.string().describe("New value (hex string, e.g. '0x1234' or expression)")
+        })
+      ])
     },
-    async ({ type, name }) => {
+    async ({ action }) => {
       let data: any;
-      switch (type) {
-        case 'all': data = await httpClient.get('/api/registers/all'); break;
-        case 'flags': data = await httpClient.get('/api/registers/flags'); break;
-        case 'avx512': data = await httpClient.get('/api/registers/avx512'); break;
-        case 'specific':
-          if (!name) throw new Error("name is required for specific register");
-          data = await httpClient.get('/api/registers/get', { name });
+      switch (action.action) {
+        case 'get_all': data = await httpClient.get('/api/registers/all'); break;
+        case 'get_flags': data = await httpClient.get('/api/registers/flags'); break;
+        case 'get_avx512': data = await httpClient.get('/api/registers/avx512'); break;
+        case 'get_specific':
+          data = await httpClient.get('/api/registers/get', { name: action.name });
+          break;
+        case 'set':
+          data = await httpClient.post('/api/registers/set', { name: action.name, value: action.value });
           break;
       }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'set_register',
-    'Set a CPU register to a new value',
-    {
-      name: z.string().describe('Register name (e.g. "rax", "rcx")'),
-      value: z.string().describe('New value (hex string, e.g. "0x1234" or expression)'),
-    },
-    async ({ name, value }) => {
-      const data = await httpClient.post('/api/registers/set', { name, value });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

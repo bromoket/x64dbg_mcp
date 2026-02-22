@@ -4,66 +4,32 @@ import { httpClient } from '../http_client.js';
 
 export function registerDumpingTools(server: McpServer) {
   server.tool(
-    'get_module_dump_info',
-    'Get PE header, sections, imports, exports, Entry Point, or relocations for a loaded module',
+    'x64dbg_dumping',
+    'Dump modules, fix IAT, or get PE header/sections/imports/exports',
     {
-      action: z.enum(['pe_header', 'sections', 'imports', 'exports', 'entry_point', 'relocations']).describe('Information to get'),
-      module: z.string().optional().describe('Module name (required for most actions)'),
-      address: z.string().optional().describe('Address (required for pe_header and relocations)')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("pe_header"), address: z.string() }),
+        z.object({ action: z.literal("sections"), module: z.string() }),
+        z.object({ action: z.literal("imports"), module: z.string() }),
+        z.object({ action: z.literal("exports"), module: z.string() }),
+        z.object({ action: z.literal("entry_point"), module: z.string() }),
+        z.object({ action: z.literal("relocations"), address: z.string() }),
+        z.object({ action: z.literal("dump_module"), module: z.string(), file: z.string().optional().default("") }),
+        z.object({ action: z.literal("fix_iat"), oep: z.string() })
+      ])
     },
-    async ({ action, module, address }) => {
+    async ({ action }) => {
       let data: any;
-      switch (action) {
-        case 'pe_header':
-          if (!address) throw new Error("address is required for pe_header");
-          data = await httpClient.get('/api/dump/pe_header', { address });
-          break;
-        case 'sections':
-          if (!module) throw new Error("module is required for sections");
-          data = await httpClient.get('/api/dump/sections', { module });
-          break;
-        case 'imports':
-          if (!module) throw new Error("module is required for imports");
-          data = await httpClient.get('/api/dump/imports', { module });
-          break;
-        case 'exports':
-          if (!module) throw new Error("module is required for exports");
-          data = await httpClient.get('/api/dump/exports', { module });
-          break;
-        case 'entry_point':
-          if (!module) throw new Error("module is required for entry_point");
-          data = await httpClient.get('/api/dump/entry_point', { module });
-          break;
-        case 'relocations':
-          if (!address) throw new Error("address is required for relocations");
-          data = await httpClient.get('/api/dump/relocations', { address });
-          break;
+      switch (action.action) {
+        case 'pe_header': data = await httpClient.get('/api/dump/pe_header', { address: action.address }); break;
+        case 'sections': data = await httpClient.get('/api/dump/sections', { module: action.module }); break;
+        case 'imports': data = await httpClient.get('/api/dump/imports', { module: action.module }); break;
+        case 'exports': data = await httpClient.get('/api/dump/exports', { module: action.module }); break;
+        case 'entry_point': data = await httpClient.get('/api/dump/entry_point', { module: action.module }); break;
+        case 'relocations': data = await httpClient.get('/api/dump/relocations', { address: action.address }); break;
+        case 'dump_module': data = await httpClient.post('/api/dump/module', { module: action.module, file: action.file }); break;
+        case 'fix_iat': data = await httpClient.post('/api/dump/fix_iat', { oep: action.oep }); break;
       }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'dump_module',
-    'Dump a loaded module from memory to a file. Critical for unpacking VMProtect/Themida protected binaries.',
-    {
-      module: z.string().describe('Module name to dump (e.g. "target.exe", "packed.dll")'),
-      file: z.string().optional().default('').describe('Output file path (empty = x64dbg will prompt)'),
-    },
-    async ({ module, file }) => {
-      const data = await httpClient.post('/api/dump/module', { module, file });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'fix_iat',
-    'Attempt IAT (Import Address Table) reconstruction using Scylla. Used after dumping a packed binary to fix import references.',
-    {
-      oep: z.string().describe('Original Entry Point address for IAT reconstruction'),
-    },
-    async ({ oep }) => {
-      const data = await httpClient.post('/api/dump/fix_iat', { oep });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

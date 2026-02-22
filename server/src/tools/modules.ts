@@ -4,36 +4,34 @@ import { httpClient } from '../http_client.js';
 
 export function registerModuleTools(server: McpServer) {
   server.tool(
-    'list_modules',
-    'List all loaded modules (DLLs and EXE) with base addresses, sizes, and entry points',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/modules/list');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_module_info',
-    'Get detailed info about a specific module, its base address, section, or party (user/system)',
+    'x64dbg_modules',
+    'List modules or get info (base, section, party) for a specific module',
     {
-      action: z.enum(['get_info', 'get_base', 'get_section', 'get_party']).describe('Information to get'),
-      query: z.string().describe('Module name (for get_info, get_base), Address (for get_section), or Base (for get_party)')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("list") }),
+        z.object({ action: z.literal("get_info"), module: z.string() }),
+        z.object({ action: z.literal("get_base"), module: z.string() }),
+        z.object({ action: z.literal("get_section"), address: z.string() }),
+        z.object({ action: z.literal("get_party"), base: z.string() })
+      ])
     },
-    async ({ action, query }) => {
+    async ({ action }) => {
       let data: any;
-      switch (action) {
+      switch (action.action) {
+        case 'list':
+          data = await httpClient.get('/api/modules/list');
+          break;
         case 'get_info':
-          data = await httpClient.get('/api/modules/get', { name: query });
+          data = await httpClient.get('/api/modules/get', { name: action.module });
           break;
         case 'get_base':
-          data = await httpClient.get('/api/modules/base', { name: query });
+          data = await httpClient.get('/api/modules/base', { name: action.module });
           break;
         case 'get_section':
-          data = await httpClient.get('/api/modules/section', { address: query });
+          data = await httpClient.get('/api/modules/section', { address: action.address });
           break;
         case 'get_party':
-          data = await httpClient.get('/api/modules/party', { base: query });
+          data = await httpClient.get('/api/modules/party', { base: action.base });
           break;
       }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };

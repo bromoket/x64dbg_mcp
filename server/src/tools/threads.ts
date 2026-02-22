@@ -4,52 +4,46 @@ import { httpClient } from '../http_client.js';
 
 export function registerThreadTools(server: McpServer) {
   server.tool(
-    'list_threads',
-    'List all threads in the debugged process with IDs, names, and start addresses',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/threads/list');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_thread_info',
-    'Get information about threads (current, specific by ID, total count, TEB address, or thread name)',
+    'x64dbg_threads',
+    'Thread operations: list, get current/specific/teb/name, or switch/suspend/resume',
     {
-      action: z.enum(['current', 'specific', 'count', 'teb', 'name']).describe('The kind of info to fetch'),
-      tid: z.string().optional().describe('Thread ID (decimal), required for specific/teb/name')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("list") }),
+        z.object({ action: z.literal("current") }),
+        z.object({ action: z.literal("count") }),
+        z.object({ action: z.literal("info"), tid: z.string().describe("Thread ID (decimal)") }),
+        z.object({ action: z.literal("teb"), tid: z.string() }),
+        z.object({ action: z.literal("name"), tid: z.string() }),
+        z.object({ action: z.literal("switch"), id: z.number().describe("Thread ID (decimal)") }),
+        z.object({ action: z.literal("suspend"), id: z.number() }),
+        z.object({ action: z.literal("resume"), id: z.number() })
+      ])
     },
-    async ({ action, tid }) => {
+    async ({ action }) => {
       let data: any;
-      switch (action) {
+      switch (action.action) {
+        case 'list':
+          data = await httpClient.get('/api/threads/list');
+          break;
         case 'current':
           data = await httpClient.get('/api/threads/current');
           break;
         case 'count':
           data = await httpClient.get('/api/threads/count');
           break;
-        case 'specific':
+        case 'info':
+          data = await httpClient.get('/api/threads/get', { id: action.tid });
+          break;
         case 'teb':
         case 'name':
-          if (!tid) throw new Error("tid is required");
-          const ep = action === 'specific' ? 'get' : action;
-          data = await httpClient.get(`/api/threads/${ep}`, action === 'specific' ? { id: tid } : { tid });
+          data = await httpClient.get(`/api/threads/${action.action}`, { tid: action.tid });
+          break;
+        case 'switch':
+        case 'suspend':
+        case 'resume':
+          data = await httpClient.post(`/api/threads/${action.action}`, { id: action.id });
           break;
       }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'manage_thread',
-    'Perform actions on a thread (switch focus, suspend, or resume)',
-    {
-      action: z.enum(['switch', 'suspend', 'resume']).describe('Action to perform'),
-      id: z.number().describe('Thread ID (decimal)')
-    },
-    async ({ action, id }) => {
-      const data = await httpClient.post(`/api/threads/${action}`, { id });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

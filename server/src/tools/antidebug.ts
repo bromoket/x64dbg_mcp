@@ -4,29 +4,24 @@ import { httpClient } from '../http_client.js';
 
 export function registerAntiDebugTools(server: McpServer) {
   server.tool(
-    'get_antidebug_info',
-    'Read PEB/TEB fields or check DEP status for anti-debugging analysis',
+    'x64dbg_antidebug',
+    'Anti-debugging analysis: Read PEB/TEB/DEP, or hide debugger',
     {
-      action: z.enum(['peb', 'teb', 'dep']).describe('Information to gather'),
-      id: z.string().optional().describe('Process ID (for peb) or Thread ID (for teb)')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("peb"), pid: z.string().optional() }),
+        z.object({ action: z.literal("teb"), tid: z.string().optional() }),
+        z.object({ action: z.literal("dep") }),
+        z.object({ action: z.literal("hide_debugger") })
+      ])
     },
-    async ({ action, id }) => {
+    async ({ action }) => {
       let data: any;
-      switch (action) {
-        case 'peb': data = await httpClient.get('/api/antidebug/peb', { pid: id || '' }); break;
-        case 'teb': data = await httpClient.get('/api/antidebug/teb', { tid: id || '' }); break;
+      switch (action.action) {
+        case 'peb': data = await httpClient.get('/api/antidebug/peb', { pid: action.pid || '' }); break;
+        case 'teb': data = await httpClient.get('/api/antidebug/teb', { tid: action.tid || '' }); break;
         case 'dep': data = await httpClient.get('/api/antidebug/dep_status'); break;
+        case 'hide_debugger': data = await httpClient.post('/api/antidebug/hide_debugger'); break;
       }
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'hide_debugger',
-    'Hide the debugger by zeroing PEB.BeingDebugged and PEB.NtGlobalFlag. Bypasses common anti-debug checks used by VMProtect, Themida, and other protectors.',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/antidebug/hide_debugger');
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

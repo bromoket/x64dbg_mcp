@@ -4,100 +4,87 @@ import { httpClient } from '../http_client.js';
 
 export function registerMemoryTools(server: McpServer) {
   server.tool(
-    'read_memory',
-    'Read bytes from a memory address. Returns hex dump and ASCII representation.',
+    'x64dbg_memory',
+    'Core memory operations: read, write, info, allocate, free, protect, map',
     {
-      address: z.string().describe('Memory address to read from (hex string or expression, e.g. "0x401000", "rax", "rsp+8")'),
-      size: z.string().optional().default('256').describe('Number of bytes to read (decimal, default 256)'),
+      action: z.discriminatedUnion("action", [
+        z.object({
+          action: z.literal("read"),
+          address: z.string().describe("Hex string or expression"),
+          size: z.string().optional().default("256").describe("Size in bytes (decimal)")
+        }),
+        z.object({
+          action: z.literal("write"),
+          address: z.string().describe("Hex string or expression"),
+          bytes: z.string().describe("Hex bytes (e.g. '90 90' or 'CC')"),
+          verify: z.boolean().optional().default(false).describe("Verify write success")
+        }),
+        z.object({ action: z.literal("info"), address: z.string().describe("Address to query page info") }),
+        z.object({ action: z.literal("is_valid"), address: z.string() }),
+        z.object({ action: z.literal("is_code"), address: z.string() }),
+        z.object({
+          action: z.literal("allocate"),
+          size: z.string().optional().default("0x1000").describe("Size in hex")
+        }),
+        z.object({
+          action: z.literal("free"),
+          address: z.string()
+        }),
+        z.object({
+          action: z.literal("protect"),
+          address: z.string(),
+          size: z.string().optional().default("0x1000"),
+          protection: z.string().describe("E.g. 'PAGE_EXECUTE_READWRITE'")
+        }),
+        z.object({
+          action: z.literal("map"),
+          address: z.string().optional().describe("Return region info for address, or full map if omitted")
+        }),
+        z.object({ action: z.literal("update_map") })
+      ])
     },
-    async ({ address, size }) => {
-      const data = await httpClient.get('/api/memory/read', { address, size });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'write_memory',
-    'Write bytes to a memory address in the debugged process. ' +
-    'Set verify=true to read back after writing and confirm success - ' +
-    'useful when patching write-protected or copy-on-write pages where writes silently fail.',
-    {
-      address: z.string().describe('Target memory address (hex string or expression)'),
-      bytes: z.string().describe('Hex bytes to write (e.g. "90 90 90" or "CC" or "0F FF")'),
-      verify: z.boolean().optional().default(false).describe(
-        'If true, reads back memory after write and verifies it matches. ' +
-        'Detects silent failures on write-protected pages.'
-      ),
-    },
-    async ({ address, bytes, verify }) => {
-      const data = await httpClient.post('/api/memory/write', { address, bytes, verify });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_memory_info',
-    'Get information about a memory address (page info, validity, or if it is code)',
-    {
-      action: z.enum(['info', 'is_valid', 'is_code']).describe('Type of information to query'),
-      address: z.string().describe('Address to check (hex string or expression)')
-    },
-    async ({ action, address }) => {
+    async ({ action }) => {
       let endpoint = '';
-      switch (action) {
-        case 'info': endpoint = '/api/memory/page_info'; break;
-        case 'is_valid': endpoint = '/api/memory/is_valid'; break;
-        case 'is_code': endpoint = '/api/memory/is_code'; break;
-      }
-      const data = await httpClient.get(endpoint, { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
+      let payload: any = undefined;
 
-  server.tool(
-    'manage_memory',
-    'Allocate, free, or change protection of memory in the debugged process',
-    {
-      action: z.enum(['allocate', 'free', 'protect']).describe('Action to perform'),
-      address: z.string().optional().describe('Address (required for free and protect)'),
-      size: z.string().optional().default('0x1000').describe('Size in hex (for allocate and protect)'),
-      protection: z.string().optional().describe('New protection string (e.g. "PAGE_EXECUTE_READWRITE", required for protect)')
-    },
-    async ({ action, address, size, protection }) => {
-      let endpoint = '';
-      let payload: any = {};
-
-      switch (action) {
+      switch (action.action) {
+        case 'read':
+          return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memory/read', { address: action.address, size: action.size }), null, 2) }] };
+        case 'write':
+          return { content: [{ type: 'text', text: JSON.stringify(await httpClient.post('/api/memory/write', { address: action.address, bytes: action.bytes, verify: action.verify }), null, 2) }] };
+        case 'info':
+          return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memory/page_info', { address: action.address }), null, 2) }] };
+        case 'is_valid':
+          return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memory/is_valid', { address: action.address }), null, 2) }] };
+        case 'is_code':
+          return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memory/is_code', { address: action.address }), null, 2) }] };
         case 'allocate':
           endpoint = '/api/memory/allocate';
-          payload.size = size;
+          payload = { size: action.size };
           break;
         case 'free':
           endpoint = '/api/memory/free';
-          if (!address) throw new Error("address is required for free");
-          payload.address = address;
+          payload = { address: action.address };
           break;
         case 'protect':
           endpoint = '/api/memory/protect';
-          if (!address) throw new Error("address is required for protect");
-          if (!protection) throw new Error("protection is required for protect");
-          payload.address = address;
-          payload.size = size;
-          payload.protection = protection;
+          payload = { address: action.address, size: action.size, protection: action.protection };
           break;
+        case 'map':
+          if ((action as any).address) {
+            return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memmap/at', { address: (action as any).address }), null, 2) }] };
+          } else {
+            return { content: [{ type: 'text', text: JSON.stringify(await httpClient.get('/api/memmap/list'), null, 2) }] };
+          }
+        case 'update_map':
+          return { content: [{ type: 'text', text: JSON.stringify(await httpClient.post('/api/memory/update_map'), null, 2) }] };
       }
-      const data = await httpClient.post(endpoint, payload);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
 
-  server.tool(
-    'update_memory_map',
-    'Force refresh the memory map. Call after memory allocations, protections changes, or module loads/unloads.',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/memory/update_map');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      if (endpoint) {
+        const data = await httpClient.post(endpoint, payload);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      return { content: [{ type: 'text', text: "{}" }] };
     }
   );
 }

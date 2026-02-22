@@ -4,58 +4,37 @@ import { httpClient } from '../http_client.js';
 
 export function registerCommandTools(server: McpServer) {
   server.tool(
-    'execute_command',
-    'Execute a raw x64dbg command. Also supports evaluating expressions or formatting strings.',
+    'x64dbg_command',
+    'Execute x64dbg commands, scripts, eval expressions, or manage debug session',
     {
-      action: z.enum(['execute', 'evaluate', 'format']).describe('Type of command action'),
-      command: z.string().describe('Command, expression, or format string depending on action')
+      action: z.discriminatedUnion("action", [
+        z.object({ action: z.literal("execute"), command: z.string().describe("x64dbg command string") }),
+        z.object({ action: z.literal("script"), commands: z.array(z.string()).describe("Array of commands") }),
+        z.object({ action: z.literal("evaluate"), expression: z.string() }),
+        z.object({ action: z.literal("format"), format: z.string() }),
+        z.object({ action: z.literal("set_init_script"), file: z.string().describe("Path to script file") }),
+        z.object({ action: z.literal("get_init_script") }),
+        z.object({ action: z.literal("get_hash") }),
+        z.object({ action: z.literal("get_events") })
+      ])
     },
-    async ({ action, command }) => {
-      let endpoint = '';
-      let payload: any = {};
-
-      switch (action) {
+    async ({ action }) => {
+      let data: any;
+      switch (action.action) {
         case 'execute':
-          endpoint = '/api/command/exec';
-          payload.command = command;
+          data = await httpClient.post('/api/command/exec', { command: action.command });
+          break;
+        case 'script':
+          data = await httpClient.post('/api/command/script', { commands: action.commands });
           break;
         case 'evaluate':
-          endpoint = '/api/command/eval';
-          payload.expression = command;
+          data = await httpClient.post('/api/command/eval', { expression: action.expression });
           break;
         case 'format':
-          endpoint = '/api/command/format';
-          payload.format = command;
+          data = await httpClient.post('/api/command/format', { format: action.format });
           break;
-      }
-      const data = await httpClient.post(endpoint, payload);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'execute_script',
-    'Execute a batch of x64dbg commands sequentially',
-    { commands: z.array(z.string()).describe('Array of x64dbg command strings to execute in order') },
-    async ({ commands }) => {
-      const data = await httpClient.post('/api/command/script', { commands });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'manage_debug_session',
-    'Get/Set initialization scripts, check database hash, or get debug events count',
-    {
-      action: z.enum(['set_init_script', 'get_init_script', 'get_hash', 'get_events']).describe('Action to perform'),
-      file: z.string().optional().describe('Path to the script file (required for set_init_script)')
-    },
-    async ({ action, file }) => {
-      let data: any;
-      switch (action) {
         case 'set_init_script':
-          if (!file) throw new Error("file is required for set_init_script");
-          data = await httpClient.post('/api/command/init_script', { file });
+          data = await httpClient.post('/api/command/init_script', { file: action.file });
           break;
         case 'get_init_script':
           data = await httpClient.get('/api/command/init_script');
