@@ -242,6 +242,11 @@ mcpserver stop      Stop the HTTP server
 mcpserver status    Show server status and port
 ```
 
+The plugin also provides GUI dialogs accessible from `Plugins > x64dbg MCP Server`:
+
+- **Settings...** — configure host, port, and auto-start (persisted via BridgeSetting)
+- **About...** — version, live server status (green/red), GitHub link, Discord contact
+
 ## Troubleshooting
 
 ### "Connection refused" or server can't reach plugin

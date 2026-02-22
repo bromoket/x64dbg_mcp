@@ -333,6 +333,11 @@ mcpserver stop      Stop the HTTP server
 mcpserver status    Show server status and port
 ```
 
+The plugin also provides GUI dialogs accessible from `Plugins > x64dbg MCP Server`:
+
+- **Settings...** — configure host, port, and auto-start (persisted via BridgeSetting)
+- **About...** — version, live server status (green/red), GitHub link, Discord contact
+
 ## Architecture
 
 ### System Overview
@@ -411,11 +416,14 @@ x64dbg_mcp/
 │       │   ├── c_http_router.*     # Method + path routing
 │       │   ├── s_http_request.h    # Request struct (method, path, body, query)
 │       │   └── s_http_response.h   # Response helpers (ok, bad_request, conflict, etc.)
+│       ├── ui/
+│       │   ├── settings_dialog.*   # Settings dialog (host, port, auto-start)
+│       │   └── about_dialog.*      # About dialog (version, status, links)
 │       └── util/
 │           └── format_utils.*      # Address formatting, hex parsing
 │
 ├── server/                         # TypeScript MCP server (npm package)
-│   ├── package.json                # x64dbg-mcp-server v2.0.1
+│   ├── package.json                # x64dbg-mcp-server v2.2.0
 │   ├── tsconfig.json               # ES2022, Node16, strict mode
 │   ├── server.json                 # MCP registry manifest
 │   └── src/
