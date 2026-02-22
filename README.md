@@ -7,7 +7,7 @@ An [MCP server](https://modelcontextprotocol.io/) that gives AI assistants full 
 
 Works with Claude Code, Claude Desktop, Cursor, Windsurf, Cline, and any MCP-compatible client.
 
-## Setup
+## Quick Start
 
 ### What You Need
 
@@ -165,7 +165,15 @@ The MCP server waits up to 2 minutes for the plugin to become available, perform
 
 **Why stdio?** No SSE reconnection issues, no port conflicts, no dropped connections. The MCP client spawns the server as a child process - it just works.
 
-## Environment Variables
+## Tech Stack
+
+- **Runtime**: Node.js >= 18
+- **Language**: TypeScript (ES2022, strict mode)
+- **MCP SDK**: `@modelcontextprotocol/sdk` - official MCP SDK
+- **Validation**: `zod` - runtime type checking for all 152 tool schemas
+- **Transport**: stdio (stdin/stdout)
+
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -173,37 +181,6 @@ The MCP server waits up to 2 minutes for the plugin to become available, perform
 | `X64DBG_MCP_PORT` | `27042` | Plugin REST API port |
 | `X64DBG_MCP_TIMEOUT` | `30000` | Request timeout (ms) |
 | `X64DBG_MCP_RETRIES` | `3` | Retry count on transient failures |
-
-## Building from Source
-
-### C++ Plugin
-
-Requires CMake >= 3.20, Ninja, vcpkg, and Clang-cl (ships with Visual Studio 2022 C++ workload).
-
-```powershell
-cd plugin
-
-# Configure (set VCPKG_ROOT to your vcpkg installation)
-$env:VCPKG_ROOT = "C:\path\to\vcpkg"
-cmake --preset x64-release    # For 64-bit
-cmake --preset x32-release    # For 32-bit
-
-# Build
-cmake --build build/x64-release
-cmake --build build/x32-release
-
-# Output:
-#   build/x64-release/bin/x64dbg_mcp.dp64
-#   build/x32-release/bin/x64dbg_mcp.dp32
-```
-
-### TypeScript Server
-
-```bash
-cd server
-npm install
-npm run build
-```
 
 ## Plugin Commands
 
@@ -377,6 +354,91 @@ mcpserver status    Show server status and port
 | `manage_patch` | `action`, `address?`, `bytes?` | Actions: list, apply, restore |
 | `export_patched_module` | `path`, `module?` | Export a module with all patches applied |
 
+## Usage Examples
+
+**Basic debugging:**
+```
+"Set a breakpoint on kernel32.CreateFileW and run"
+"Step over 10 instructions and show me the registers"
+"What's the current call stack?"
+```
+
+**Memory analysis:**
+```
+"Read 128 bytes at the address pointed to by RDI"
+"Search for the byte pattern FF 15 ?? ?? ?? ?? in the .text section"
+"Write 90 90 90 (NOPs) at 0x401000 and verify the write"
+```
+
+**Reverse engineering:**
+```
+"Disassemble the current function and explain the algorithm"
+"Get the control flow graph and identify the switch cases"
+"Show me cross-references to this function - who calls it?"
+"List all imports from kernel32 and advapi32"
+```
+
+**Anti-debug bypass:**
+```
+"Hide the debugger from anti-debug checks"
+"Show me the PEB fields - is BeingDebugged set?"
+"Set an exception breakpoint on STATUS_ACCESS_VIOLATION"
+```
+
+**Tracing and logging:**
+```
+"Configure a logging breakpoint on GetProcAddress that logs the function name"
+"Set up 8 breakpoints in one call using configure_breakpoints"
+"Trace into this function and log every instruction to trace.log"
+```
+
+**Process inspection:**
+```
+"List all threads and tell me which one is the main thread"
+"Show me all open file handles in this process"
+"List TCP connections - is it phoning home?"
+"Dump the main module to disk and fix the import table"
+```
+
+## Troubleshooting
+
+### "Connection refused" or server can't reach plugin
+
+Make sure:
+1. x64dbg is running with a target loaded
+2. The MCP plugin is installed in the correct `plugins/` directory
+3. You see `[MCP] x64dbg MCP Server started on 127.0.0.1:27042` in the x64dbg log
+
+Test connectivity: `curl http://127.0.0.1:27042/api/debug/state`
+
+### "Waiting for x64dbg plugin..." hangs
+
+The server waits up to 2 minutes for the plugin. Start x64dbg **before** your MCP client, or restart the client after x64dbg is running.
+
+### Tools return errors about debugger state
+
+- **Paused required**: Most inspection tools (registers, memory, disassembly) need the target to be paused
+- **Running required**: `pause` and `force_pause` need the target to be running
+- **Loaded required**: A target executable must be loaded in x64dbg
+
+### 32-bit vs 64-bit
+
+Use the correct plugin for your target:
+- 64-bit process: x64dbg with `x64dbg_mcp.dp64`
+- 32-bit process: x32dbg with `x64dbg_mcp.dp32`
+
+Both use the same MCP server - just `npx -y x64dbg-mcp-server`.
+
+### Plugin commands in x64dbg
+
+You can control the REST API from the x64dbg command bar:
+
+```
+mcpserver start     Start the HTTP server
+mcpserver stop      Stop the HTTP server
+mcpserver status    Show server status and port
+```
+
 ## Project Structure
 
 ```
@@ -404,6 +466,37 @@ x64dbg_mcp/
     package.json
     tsconfig.json
   install.ps1                 # PowerShell script to deploy plugins locally
+```
+
+## Building from Source
+
+### C++ Plugin
+
+Requires CMake >= 3.20, Ninja, vcpkg, and Clang-cl (ships with Visual Studio 2022 C++ workload).
+
+```powershell
+cd plugin
+
+# Configure (set VCPKG_ROOT to your vcpkg installation)
+$env:VCPKG_ROOT = "C:\path\to\vcpkg"
+cmake --preset x64-release    # For 64-bit
+cmake --preset x32-release    # For 32-bit
+
+# Build
+cmake --build build/x64-release
+cmake --build build/x32-release
+
+# Output:
+#   build/x64-release/bin/x64dbg_mcp.dp64
+#   build/x32-release/bin/x64dbg_mcp.dp32
+```
+
+### TypeScript Server
+
+```bash
+cd server
+npm install
+npm run build
 ```
 
 ## Security
