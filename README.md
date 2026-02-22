@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/x64dbg-mcp-server)](https://www.npmjs.com/package/x64dbg-mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-An [MCP server](https://modelcontextprotocol.io/) that gives AI assistants full control over the [x64dbg](https://x64dbg.com/) debugger. **~78 consolidated tools** across **21 categories** - stepping, breakpoints, memory, disassembly, tracing, anti-debug bypasses, control flow analysis, and more.
+An [MCP server](https://modelcontextprotocol.io/) that gives AI assistants full control over the [x64dbg](https://x64dbg.com/) debugger. **20 powerful mega-tools** using Zod discriminated unions - stepping, breakpoints, memory, disassembly, tracing, anti-debug bypasses, control flow analysis, and more.
 
 Works with Claude Code, Claude Desktop, Cursor, Windsurf, Cline, and any MCP-compatible client.
 
@@ -44,8 +44,16 @@ Add to `.claude/settings.json` (project-level) or `~/.claude/settings.json` (glo
 {
   "mcpServers": {
     "x64dbg": {
-      "command": "node",
-      "args": ["E:/GitHub/x64dbg_mcp/server/build/index.js"]
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "--prefix",
+        "E:\\GitHub\\x64dbg_mcp\\server",
+        "x64dbg-mcp-server"
+      ]
     }
   }
 }
@@ -159,7 +167,7 @@ The system has two components:
 
 - **C++ Plugin** (`x64dbg_mcp.dp64` / `.dp32`) runs inside x64dbg as a lightweight REST API server on `127.0.0.1:27042`. It wraps the x64dbg Bridge/Plugin SDK with 152 JSON endpoints.
 
-- **TypeScript MCP Server** (`x64dbg-mcp-server` on npm) implements the MCP protocol over stdio. Each of the consolidated tools (~78 total) validates parameters with Zod, then routes the request to one of the 152 specific REST endpoints on the plugin via localhost HTTP.
+- **TypeScript MCP Server** (`x64dbg-mcp-server` on npm) implements the MCP protocol over stdio. The 20 mega-tools use Zod discriminated unions to validate parameters before routing requests to one of the 152 specific REST endpoints on the plugin via localhost HTTP.
 
 The MCP server waits up to 2 minutes for the plugin to become available, performs health checks every 15 seconds, and automatically reconnects if x64dbg restarts. Requests retry up to 3 times with exponential backoff.
 
@@ -192,167 +200,32 @@ mcpserver stop      Stop the HTTP server
 mcpserver status    Show server status and port
 ```
 
-## Tool Reference (~78 tools)
+## Tool Reference (20 Mega-Tools)
 
-### Debug Control (2 tools)
+The server exposes exactly **20 powerful mega-tools** using Zod discriminated unions. When calling a tool, provide the `action` argument to determine the exact operation.
 
-| Tool | Parameters | Description |
+| Tool | Actions (Operations) | Description |
 |------|-----------|-------------|
-| `get_debug_state` | - | Get debugger state (stopped/running/paused), CIP, module, and health check |
-| `execute_debug_action` | `action`, `address?` | Actions: run, pause, force_pause, step_into, step_over, step_out, stop_debug, restart_debug, run_to_address |
-
-### Registers (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_registers` | `action`, `register_name?` | Actions: all, specific, flags, avx512 |
-| `set_register` | `name`, `value` | Set a register to a new value |
-
-### Memory (4 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `read_memory` | `address`, `size?` | Read bytes from address (hex dump + ASCII) |
-| `write_memory` | `address`, `bytes`, `verify?` | Write bytes with optional readback verification |
-| `get_memory_info` | `action`, `address` | Actions: info, is_valid, is_code |
-| `manage_memory` | `action`, `address?`, `size?`, `protection?` | Actions: allocate, free, protect |
-| `update_memory_map` | - | Force refresh the memory map |
-
-### Disassembly (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `disassemble` | `action`, `address?`, `count?`, `max_instructions?` | Actions: at_address, function, info |
-| `assemble` | `address`, `instruction` | Assemble an instruction at address |
-
-### Breakpoints (4 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `manage_breakpoint` | `action`, `address`, `bp_type?`, `size?`, `condition?`, `text?` | Actions: set_software, set_hardware, set_memory, delete, enable, disable, toggle, set_condition, set_log, reset_hit_count |
-| `list_breakpoints` | - | List all breakpoints with resolved symbol labels |
-| `configure_breakpoint` | `address`, `bp_type?`, `break_condition?`, `log_text?`, `fast_resume?`, ... | **Unified**: set BP + all options in one call |
-| `configure_breakpoints` | `breakpoints[]` | **Batch**: configure multiple breakpoints in one call |
-
-### Symbols (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `resolve_symbol` | `action`, `name?`, `address?`, `pattern?`, `module?` | Actions: name, at_address, search_pattern, list_module |
-| `manage_annotation` | `action`, `address`, `text?` | Actions: get_label, set_label, get_comment, set_comment |
-| `manage_bookmark` | `action`, `address` | Actions: set, clear |
-
-### Stack (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_call_stack` | `action`, `max_depth?`, `thread_id?` | Actions: current, specific_thread |
-| `read_stack` | `address?`, `size?` | Read raw stack memory with symbol resolution |
-| `get_stack_info` | `action`, `address?` | Actions: pointers, seh_chain, return_address, comment |
-
-### Threads (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `list_threads` | - | List all threads with IDs, names, and start addresses |
-| `get_thread_info` | `action`, `thread_id?` | Actions: current, specific, teb, name, count |
-| `manage_thread` | `action`, `thread_id` | Actions: switch, suspend, resume |
-
-### Modules (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `list_modules` | - | List all loaded modules with base addresses and sizes |
-| `get_module_info` | `action`, `name?`, `address?` | Actions: get_info, get_base, get_section, get_party |
-
-### Memory Map (1 tool)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_memory_map` | `address?` | Get the full memory map or info for a specific region |
-
-### Search (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `search_memory` | `action`, `pattern?`, `text?`, `address?`, `size?`, `max_results?`, `module?`, `encoding?` | Actions: pattern, string |
-| `get_search_info` | `action`, `address?`, `search?`, `encoding?`, `max_length?`, `max_results?`, `size?` | Actions: string_at, autocomplete, encode_type |
-
-### Command (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `execute_command` | `action`, `command?`, `expression?`, `format?` | Actions: execute, evaluate, format |
-| `execute_script` | `commands[]` | Execute a batch of commands sequentially |
-| `manage_debug_session` | `action`, `file?` | Actions: init_script_get, init_script_set, db_hash, events |
-
-### Analysis (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_analysis_info` | `action`, `address?`, `module?`, `id?`, `mnemonic?` | Actions: xrefs_to, xrefs_from, function, basic_blocks, strings, source, mnemonic |
-| `list_database_info` | `action` | Actions: constants, errors, structs |
-| `convert_address` | `action`, `address?`, `module?`, `offset?` | Actions: va_to_file, file_to_va |
-
-### Tracing (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `manage_trace` | `action`, `condition?`, `max_steps?`, `log_text?`, `party?`, `file?`, `command?`, ... | Actions: into, over, run, stop, log_setup, animate, conditional_run |
-| `get_trace_info` | `action`, `address?` | Actions: hit_count, branch_dest, will_jump |
-| `set_trace_record_type` | `type` | Set the trace recording type (bit, byte, word, etc.) |
-
-### Dumping (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `dump_module` | `module`, `file?` | Dump a module from memory to disk |
-| `get_module_dump_info` | `action`, `address?`, `module?` | Actions: pe_header, sections, imports, exports, relocations, entry_point |
-| `fix_iat` | `oep` | IAT reconstruction using Scylla |
-
-### Anti-Debug (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `hide_debugger` | - | Zero PEB.BeingDebugged and NtGlobalFlag |
-| `get_antidebug_info` | `action`, `id?` | Actions: peb, teb, dep |
-
-### Exceptions (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `manage_exception_breakpoint` | `action`, `code?`, `chance?`, `bp_action?` | Actions: set, delete, list |
-| `list_exception_codes` | - | List all known Windows exception codes |
-| `skip_exception` | - | Skip/pass current exception and continue |
-
-### Process (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_process_info` | `action` | Actions: detailed, basic, is_elevated, cmdline, version |
-| `set_cmdline` | `cmdline` | Set command line (takes effect on restart) |
-
-### Handles (3 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_handle_info` | `action` | Actions: list, tcp, windows, heaps |
-| `get_handle_name` | `handle` | Get the name/path of a handle |
-| `close_handle` | `handle` | Force-close a handle |
-
-### Control Flow (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `get_control_flow_info` | `action`, `address?` | Actions: cfg, loops, branch_dest, will_jump, func_type |
-| `manage_function_definitions` | `action`, `address?`, `start?`, `end?` | Actions: add, delete |
-
-### Patches (2 tools)
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `manage_patch` | `action`, `address?`, `bytes?` | Actions: list, apply, restore |
-| `export_patched_module` | `path`, `module?` | Export a module with all patches applied |
+| `x64dbg_debug` | `run`, `pause`, `force_pause`, `step_into`, `step_over`, `step_out`, `stop_debug`, `restart_debug`, `run_to_address`, `state` | Control debugger execution and query current state |
+| `x64dbg_registers` | `all`, `specific`, `flags`, `avx512`, `set_register` | Read or write CPU registers |
+| `x64dbg_memory` | `read`, `write`, `info`, `is_valid`, `is_code`, `allocate`, `free`, `protect`, `map`, `update_map` | Read, write, allocate, and analyze memory regions |
+| `x64dbg_disassembly` | `disassemble`, `disassemble_function`, `instruction_info`, `assemble` | Assemble/disassemble code and analyze instructions |
+| `x64dbg_breakpoints`| `set_software`, `set_hardware`, `set_memory`, `delete`, `enable`, `disable`, `toggle`, `set_condition`, `set_log`, `reset_hit_count`, `list`, `configure`, `configure_batch` | Comprehensive breakpoint management |
+| `x64dbg_symbols` | `resolve_name`, `resolve_address`, `search_pattern`, `list_module`, `get_label`, `set_label`, `get_comment`, `set_comment`, `set_bookmark`, `clear_bookmark` | Resolve symbols, names, labels, and bookmarks |
+| `x64dbg_stack` | `get_call_stack`, `read`, `pointers`, `seh_chain`, `return_address`, `comment` | Call stack and stack memory analysis |
+| `x64dbg_threads` | `list`, `current`, `count`, `info`, `teb`, `name`, `switch`, `suspend`, `resume` | Thread enumeration and control |
+| `x64dbg_modules` | `list`, `get_info`, `get_base`, `get_section`, `get_party` | Inspect loaded modules and sections |
+| `x64dbg_search` | `pattern`, `string`, `string_at`, `symbol_auto_complete`, `encode_type` | Search memory for byte patterns or strings |
+| `x64dbg_command` | `execute`, `evaluate`, `format`, `execute_script`, `init_script_get`, `init_script_set`, `db_hash`, `events` | Execute raw x64dbg commands, scripts, or evaluate expressions |
+| `x64dbg_analysis` | `xrefs_to`, `xrefs_from`, `function_info`, `basic_blocks`, `strings`, `source`, `mnemonic`, `constants`, `errors`, `structs`, `va_to_file`, `file_to_va` | Deep binary analysis, cross-references, and database querying |
+| `x64dbg_tracing` | `into`, `over`, `run`, `stop`, `log_setup`, `animate`, `conditional_run`, `hit_count`, `branch_dest`, `will_jump`, `set_record_type` | Advanced execution tracing and hit-counters |
+| `x64dbg_dumping` | `dump_module`, `pe_header`, `sections`, `imports`, `exports`, `relocations`, `entry_point`, `fix_iat` | Dump modules from memory and manipulate PE headers |
+| `x64dbg_antidebug` | `hide_debugger`, `peb`, `teb`, `dep` | Patch PEB/TEB to bypass anti-debugging protections |
+| `x64dbg_exceptions`| `set`, `delete`, `list`, `list_codes`, `skip` | Manage exception handling and breakpoints |
+| `x64dbg_process` | `basic`, `detailed`, `cmdline`, `elevated`, `dbversion`, `set_cmdline` | Query process info and manipulate command arguments |
+| `x64dbg_handles` | `list_handles`, `list_tcp`, `list_windows`, `list_heaps`, `get_name`, `close` | Inspect handles, networking, and windows associated with the process |
+| `x64dbg_control_flow`| `cfg`, `branch_dest`, `is_jump_taken`, `loops`, `func_type`, `add_function`, `delete_function` | Perform control-flow graph (CFG) analysis |
+| `x64dbg_patches` | `list`, `apply`, `restore`, `export` | Apply and export inline byte patches |
 
 ## Usage Examples
 
