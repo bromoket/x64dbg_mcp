@@ -36,67 +36,57 @@ export function registerMemoryTools(server: McpServer) {
   );
 
   server.tool(
-    'is_valid_address',
-    'Check if a memory address is a valid readable pointer',
-    { address: z.string().describe('Address to check (hex string or expression)') },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/memory/is_valid', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
     'get_memory_info',
-    'Get memory page protection info for an address',
-    { address: z.string().describe('Address to query (hex string or expression)') },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/memory/page_info', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'allocate_memory',
-    'Allocate memory in the debugged process via VirtualAllocEx',
-    { size: z.string().optional().default('0x1000').describe('Size to allocate (hex, default 0x1000)') },
-    async ({ size }) => {
-      const data = await httpClient.post('/api/memory/allocate', { size });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'free_memory',
-    'Free previously allocated memory in the debugged process',
-    { address: z.string().describe('Address of allocated memory to free') },
-    async ({ address }) => {
-      const data = await httpClient.post('/api/memory/free', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'set_memory_protection',
-    'Change memory page protection (VirtualProtectEx)',
+    'Get information about a memory address (page info, validity, or if it is code)',
     {
-      address: z.string().describe('Start address of the memory region'),
-      size: z.string().optional().default('0x1000').describe('Size of the region (hex)'),
-      protection: z.string().describe('New protection (e.g. "PAGE_EXECUTE_READWRITE", "40" for ERW)'),
+      action: z.enum(['info', 'is_valid', 'is_code']).describe('Type of information to query'),
+      address: z.string().describe('Address to check (hex string or expression)')
     },
-    async ({ address, size, protection }) => {
-      const data = await httpClient.post('/api/memory/protect', { address, size, protection });
+    async ({ action, address }) => {
+      let endpoint = '';
+      switch (action) {
+        case 'info': endpoint = '/api/memory/page_info'; break;
+        case 'is_valid': endpoint = '/api/memory/is_valid'; break;
+        case 'is_code': endpoint = '/api/memory/is_code'; break;
+      }
+      const data = await httpClient.get(endpoint, { address });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
 
   server.tool(
-    'is_code_page',
-    'Check if an address belongs to an executable (code) memory page',
+    'manage_memory',
+    'Allocate, free, or change protection of memory in the debugged process',
     {
-      address: z.string().describe('Address to check'),
+      action: z.enum(['allocate', 'free', 'protect']).describe('Action to perform'),
+      address: z.string().optional().describe('Address (required for free and protect)'),
+      size: z.string().optional().default('0x1000').describe('Size in hex (for allocate and protect)'),
+      protection: z.string().optional().describe('New protection string (e.g. "PAGE_EXECUTE_READWRITE", required for protect)')
     },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/memory/is_code', { address });
+    async ({ action, address, size, protection }) => {
+      let endpoint = '';
+      let payload: any = {};
+
+      switch (action) {
+        case 'allocate':
+          endpoint = '/api/memory/allocate';
+          payload.size = size;
+          break;
+        case 'free':
+          endpoint = '/api/memory/free';
+          if (!address) throw new Error("address is required for free");
+          payload.address = address;
+          break;
+        case 'protect':
+          endpoint = '/api/memory/protect';
+          if (!address) throw new Error("address is required for protect");
+          if (!protection) throw new Error("protection is required for protect");
+          payload.address = address;
+          payload.size = size;
+          payload.protection = protection;
+          break;
+      }
+      const data = await httpClient.post(endpoint, payload);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

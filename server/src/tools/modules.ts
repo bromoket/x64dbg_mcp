@@ -15,44 +15,27 @@ export function registerModuleTools(server: McpServer) {
 
   server.tool(
     'get_module_info',
-    'Get detailed info about a specific loaded module',
-    { name: z.string().describe('Module name (e.g. "kernel32", "ntdll", "target.exe")') },
-    async ({ name }) => {
-      const data = await httpClient.get('/api/modules/get', { name });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_module_base',
-    'Get the base address of a loaded module',
-    { name: z.string().describe('Module name') },
-    async ({ name }) => {
-      const data = await httpClient.get('/api/modules/base', { name });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_section_at',
-    'Get the PE section name at an address (e.g. ".text", ".rdata", ".vmp0")',
+    'Get detailed info about a specific module, its base address, section, or party (user/system)',
     {
-      address: z.string().describe('Address to look up section for'),
+      action: z.enum(['get_info', 'get_base', 'get_section', 'get_party']).describe('Information to get'),
+      query: z.string().describe('Module name (for get_info, get_base), Address (for get_section), or Base (for get_party)')
     },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/modules/section', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_module_party',
-    'Get whether a module is user code or system code (user/system)',
-    {
-      base: z.string().describe('Module base address'),
-    },
-    async ({ base }) => {
-      const data = await httpClient.get('/api/modules/party', { base });
+    async ({ action, query }) => {
+      let data: any;
+      switch (action) {
+        case 'get_info':
+          data = await httpClient.get('/api/modules/get', { name: query });
+          break;
+        case 'get_base':
+          data = await httpClient.get('/api/modules/base', { name: query });
+          break;
+        case 'get_section':
+          data = await httpClient.get('/api/modules/section', { address: query });
+          break;
+        case 'get_party':
+          data = await httpClient.get('/api/modules/party', { base: query });
+          break;
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

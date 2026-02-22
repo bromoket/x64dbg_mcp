@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { registerAllTools } from './tools/index.js';
 import { config } from './config.js';
 import { httpClient } from './http_client.js';
+import { registerAllTools } from './tools/index.js';
 
 async function main() {
   const server = new McpServer({
@@ -11,7 +11,7 @@ async function main() {
     version: '1.0.0',
   });
 
-  // Register all 152 tools
+  // Register all tools (~78 consolidated down from 152)
   registerAllTools(server);
 
   // Connect via stdio (rock-solid transport, no connection drops)
@@ -19,7 +19,7 @@ async function main() {
   await server.connect(transport);
 
   // Log to stderr (stdout is used by MCP protocol)
-  console.error(`[x64dbg-mcp] Server started (152 tools), plugin expected at ${config.host}:${config.port}`);
+  console.error(`[x64dbg-mcp] Server started (~78 tools), plugin expected at ${config.host}:${config.port}`);
   console.error(`[x64dbg-mcp] Timeout: ${config.timeout}ms, Retries: ${config.retries}`);
 
   // Graceful shutdown

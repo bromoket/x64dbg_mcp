@@ -4,25 +4,19 @@ import { httpClient } from '../http_client.js';
 
 export function registerAntiDebugTools(server: McpServer) {
   server.tool(
-    'get_peb_info',
-    'Read PEB (Process Environment Block) fields including BeingDebugged, NtGlobalFlag, and ProcessHeap. Essential for understanding anti-debug checks in VMProtect/Themida.',
+    'get_antidebug_info',
+    'Read PEB/TEB fields or check DEP status for anti-debugging analysis',
     {
-      pid: z.string().optional().default('').describe('Process ID (default: current debuggee PID)'),
+      action: z.enum(['peb', 'teb', 'dep']).describe('Information to gather'),
+      id: z.string().optional().describe('Process ID (for peb) or Thread ID (for teb)')
     },
-    async ({ pid }) => {
-      const data = await httpClient.get('/api/antidebug/peb', { pid });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_teb_info',
-    'Read TEB (Thread Environment Block) fields including SEH chain, stack base/limit, and PEB pointer',
-    {
-      tid: z.string().optional().default('').describe('Thread ID (default: current thread)'),
-    },
-    async ({ tid }) => {
-      const data = await httpClient.get('/api/antidebug/teb', { tid });
+    async ({ action, id }) => {
+      let data: any;
+      switch (action) {
+        case 'peb': data = await httpClient.get('/api/antidebug/peb', { pid: id || '' }); break;
+        case 'teb': data = await httpClient.get('/api/antidebug/teb', { tid: id || '' }); break;
+        case 'dep': data = await httpClient.get('/api/antidebug/dep_status'); break;
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -33,16 +27,6 @@ export function registerAntiDebugTools(server: McpServer) {
     {},
     async () => {
       const data = await httpClient.post('/api/antidebug/hide_debugger');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_dep_status',
-    'Check if Data Execution Prevention (DEP) is enabled for the debugged process',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/antidebug/dep_status');
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

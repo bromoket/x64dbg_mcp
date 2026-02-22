@@ -4,6 +4,46 @@ import { httpClient } from '../http_client.js';
 
 export function registerDumpingTools(server: McpServer) {
   server.tool(
+    'get_module_dump_info',
+    'Get PE header, sections, imports, exports, Entry Point, or relocations for a loaded module',
+    {
+      action: z.enum(['pe_header', 'sections', 'imports', 'exports', 'entry_point', 'relocations']).describe('Information to get'),
+      module: z.string().optional().describe('Module name (required for most actions)'),
+      address: z.string().optional().describe('Address (required for pe_header and relocations)')
+    },
+    async ({ action, module, address }) => {
+      let data: any;
+      switch (action) {
+        case 'pe_header':
+          if (!address) throw new Error("address is required for pe_header");
+          data = await httpClient.get('/api/dump/pe_header', { address });
+          break;
+        case 'sections':
+          if (!module) throw new Error("module is required for sections");
+          data = await httpClient.get('/api/dump/sections', { module });
+          break;
+        case 'imports':
+          if (!module) throw new Error("module is required for imports");
+          data = await httpClient.get('/api/dump/imports', { module });
+          break;
+        case 'exports':
+          if (!module) throw new Error("module is required for exports");
+          data = await httpClient.get('/api/dump/exports', { module });
+          break;
+        case 'entry_point':
+          if (!module) throw new Error("module is required for entry_point");
+          data = await httpClient.get('/api/dump/entry_point', { module });
+          break;
+        case 'relocations':
+          if (!address) throw new Error("address is required for relocations");
+          data = await httpClient.get('/api/dump/relocations', { address });
+          break;
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
     'dump_module',
     'Dump a loaded module from memory to a file. Critical for unpacking VMProtect/Themida protected binaries.',
     {
@@ -17,54 +57,6 @@ export function registerDumpingTools(server: McpServer) {
   );
 
   server.tool(
-    'get_pe_header',
-    'Parse and return PE header fields from a module loaded in memory. Shows MZ/PE signatures, machine type, sections count, entry point, image base.',
-    {
-      address: z.string().describe('Base address of the PE image (module base or expression)'),
-    },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/dump/pe_header', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_sections',
-    'Get PE section headers (name, virtual address, sizes, characteristics) for a loaded module',
-    {
-      module: z.string().describe('Module name (e.g. "ntdll", "target.exe")'),
-    },
-    async ({ module }) => {
-      const data = await httpClient.get('/api/dump/sections', { module });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_imports',
-    'Display the import table (IAT) for a loaded module in x64dbg references view',
-    {
-      module: z.string().describe('Module name'),
-    },
-    async ({ module }) => {
-      const data = await httpClient.get('/api/dump/imports', { module });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_exports',
-    'Display the export table for a loaded module in x64dbg references view',
-    {
-      module: z.string().describe('Module name'),
-    },
-    async ({ module }) => {
-      const data = await httpClient.get('/api/dump/exports', { module });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
     'fix_iat',
     'Attempt IAT (Import Address Table) reconstruction using Scylla. Used after dumping a packed binary to fix import references.',
     {
@@ -72,42 +64,6 @@ export function registerDumpingTools(server: McpServer) {
     },
     async ({ oep }) => {
       const data = await httpClient.post('/api/dump/fix_iat', { oep });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_relocations',
-    'Get relocation entries for the module containing the given address',
-    {
-      address: z.string().describe('Address within the module to get relocations for'),
-    },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/dump/relocations', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'export_patched_file',
-    'Export all current patches to a patched copy of the executable',
-    {
-      filename: z.string().describe('Output file path for the patched binary'),
-    },
-    async ({ filename }) => {
-      const data = await httpClient.post('/api/patches/export_file', { filename });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_entry_point',
-    'Get the entry point (AddressOfEntryPoint) of a loaded module',
-    {
-      module: z.string().describe('Module name'),
-    },
-    async ({ module }) => {
-      const data = await httpClient.get('/api/dump/entry_point', { module });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

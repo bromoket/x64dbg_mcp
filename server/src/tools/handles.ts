@@ -4,11 +4,19 @@ import { httpClient } from '../http_client.js';
 
 export function registerHandleTools(server: McpServer) {
   server.tool(
-    'list_handles',
-    'List all open handles in the debugged process with their names and types (files, registry keys, mutexes, etc.)',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/handles/list');
+    'get_handle_info',
+    'List all open handles, TCP connections, windows, or heaps in the debugged process',
+    {
+      action: z.enum(['handles', 'tcp', 'windows', 'heaps']).describe('Type of handles/objects to list')
+    },
+    async ({ action }) => {
+      let data: any;
+      switch (action) {
+        case 'handles': data = await httpClient.get('/api/handles/list'); break;
+        case 'tcp': data = await httpClient.get('/api/handles/tcp'); break;
+        case 'windows': data = await httpClient.get('/api/handles/windows'); break;
+        case 'heaps': data = await httpClient.get('/api/handles/heaps'); break;
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -21,36 +29,6 @@ export function registerHandleTools(server: McpServer) {
     },
     async ({ handle }) => {
       const data = await httpClient.get('/api/handles/get', { handle });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'list_tcp_connections',
-    'List TCP network connections of the debugged process with remote/local addresses, ports, and connection states',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/handles/tcp');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'list_windows',
-    'List all windows created by the debugged process with titles, class names, styles, and window procedures',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/handles/windows');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'list_heaps',
-    'List all heaps in the debugged process with addresses, sizes, and flags',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/handles/heaps');
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

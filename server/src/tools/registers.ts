@@ -4,21 +4,23 @@ import { httpClient } from '../http_client.js';
 
 export function registerRegisterTools(server: McpServer) {
   server.tool(
-    'get_all_registers',
-    'Get all CPU register values (general purpose, segment, debug, flags)',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/registers/all');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_register',
-    'Get the value of a single CPU register',
-    { name: z.string().describe('Register name (e.g. "rax", "eip", "dr0")') },
-    async ({ name }) => {
-      const data = await httpClient.get('/api/registers/get', { name });
+    'get_registers',
+    'Get CPU register values (all, specific, flags, avx512)',
+    {
+      type: z.enum(['all', 'specific', 'flags', 'avx512']).describe('Type of register info to get'),
+      name: z.string().optional().describe('Register name (e.g. "rax", "eip", "dr0") required for "specific"')
+    },
+    async ({ type, name }) => {
+      let data: any;
+      switch (type) {
+        case 'all': data = await httpClient.get('/api/registers/all'); break;
+        case 'flags': data = await httpClient.get('/api/registers/flags'); break;
+        case 'avx512': data = await httpClient.get('/api/registers/avx512'); break;
+        case 'specific':
+          if (!name) throw new Error("name is required for specific register");
+          data = await httpClient.get('/api/registers/get', { name });
+          break;
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -32,26 +34,6 @@ export function registerRegisterTools(server: McpServer) {
     },
     async ({ name, value }) => {
       const data = await httpClient.post('/api/registers/set', { name, value });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_flags',
-    'Get decoded EFLAGS register (CF, ZF, SF, OF, etc.)',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/registers/flags');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_avx512_registers',
-    'Get AVX-512 extended register dump (requires CPU and OS support)',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/registers/avx512');
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

@@ -4,36 +4,24 @@ import { httpClient } from '../http_client.js';
 
 export function registerPatchTools(server: McpServer) {
   server.tool(
-    'list_patches',
-    'List all current byte patches applied to the debugged process',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/patches/list');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'apply_patch',
-    'Apply a byte patch at a specific address. Writes new bytes and returns the original bytes for reverting.',
+    'manage_patch',
+    'List, apply, or restore byte patches in memory',
     {
-      address: z.string().describe('Target address to patch (hex string or expression, e.g. "0x401000")'),
-      bytes: z.string().describe('Hex bytes to write (e.g. "90 90 90" for NOPs)'),
+      action: z.enum(['list', 'apply', 'restore']).describe('Action to perform'),
+      address: z.string().optional().describe('Target address (required for apply and restore)'),
+      bytes: z.string().optional().describe('Hex bytes to write (required for apply)'),
     },
-    async ({ address, bytes }) => {
-      const data = await httpClient.post('/api/patches/apply', { address, bytes });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'restore_patch',
-    'Restore original bytes at a previously patched address',
-    {
-      address: z.string().describe('Address of the patch to restore (hex string or expression)'),
-    },
-    async ({ address }) => {
-      const data = await httpClient.post('/api/patches/restore', { address });
+    async ({ action, address, bytes }) => {
+      let data: any;
+      if (action === 'apply') {
+        if (!address || !bytes) throw new Error("address and bytes required for apply");
+        data = await httpClient.post('/api/patches/apply', { address, bytes });
+      } else if (action === 'restore') {
+        if (!address) throw new Error("address is required for restore");
+        data = await httpClient.post('/api/patches/restore', { address });
+      } else {
+        data = await httpClient.get('/api/patches/list');
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

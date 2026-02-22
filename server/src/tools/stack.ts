@@ -5,10 +5,18 @@ import { httpClient } from '../http_client.js';
 export function registerStackTools(server: McpServer) {
   server.tool(
     'get_call_stack',
-    'Get the call stack (stack trace) of the current thread with return addresses, labels, and modules',
-    { max_depth: z.string().optional().default('50').describe('Maximum stack frames to retrieve (default 50)') },
-    async ({ max_depth }) => {
-      const data = await httpClient.get('/api/stack/trace', { max_depth });
+    'Get the call stack for the current or a specific thread',
+    {
+      handle: z.string().optional().describe('Thread handle (hex). If omitted, gets current thread stack.'),
+      max_depth: z.string().optional().default('50').describe('Maximum stack frames to retrieve (default 50)')
+    },
+    async ({ handle, max_depth }) => {
+      let data: any;
+      if (handle) {
+         data = await httpClient.get('/api/stack/callstack_thread', { handle });
+      } else {
+         data = await httpClient.get('/api/stack/trace', { max_depth });
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
@@ -17,7 +25,7 @@ export function registerStackTools(server: McpServer) {
     'read_stack',
     'Read raw stack memory as pointer-sized entries with symbol resolution',
     {
-      address: z.string().optional().default('csp').describe('Stack address to read from (default: current stack pointer)'),
+      address: z.string().optional().default('csp').describe('Stack address (default: csp)'),
       size: z.string().optional().default('256').describe('Number of bytes to read (default 256)'),
     },
     async ({ address, size }) => {
@@ -27,55 +35,27 @@ export function registerStackTools(server: McpServer) {
   );
 
   server.tool(
-    'get_stack_pointers',
-    'Get the current stack pointer (RSP/ESP) and frame pointer (RBP/EBP)',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/stack/pointers');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_seh_chain',
-    'Get the SEH (Structured Exception Handler) chain',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/stack/seh_chain');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_stack_comment',
-    'Get the stack comment and color for a stack address',
+    'get_stack_info',
+    'Query information about the stack (pointers, SEH chain, comments, or top return address)',
     {
-      address: z.string().describe('Stack address to get comment for'),
+      action: z.enum(['pointers', 'seh_chain', 'comment', 'return_address']).describe('Type of info to get'),
+      address: z.string().optional().describe('Stack address (required only for "comment" action)')
     },
-    async ({ address }) => {
-      const data = await httpClient.get('/api/stack/comment', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
+    async ({ action, address }) => {
+      let endpoint = '';
+      let params: any = {};
 
-  server.tool(
-    'get_callstack_by_thread',
-    'Get the call stack for a specific thread by its handle (not the current thread)',
-    {
-      handle: z.string().describe('Thread handle value (hex)'),
-    },
-    async ({ handle }) => {
-      const data = await httpClient.get('/api/stack/callstack_thread', { handle });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_return_address',
-    'Get the return address from the top of the current stack (value at [RSP/ESP])',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/stack/return_address');
+      switch (action) {
+        case 'pointers': endpoint = '/api/stack/pointers'; break;
+        case 'seh_chain': endpoint = '/api/stack/seh_chain'; break;
+        case 'return_address': endpoint = '/api/stack/return_address'; break;
+        case 'comment':
+          endpoint = '/api/stack/comment';
+          if (!address) throw new Error("address is required for comment action");
+          params.address = address;
+          break;
+      }
+      const data = await httpClient.get(endpoint, params);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

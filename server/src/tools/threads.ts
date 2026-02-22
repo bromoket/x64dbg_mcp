@@ -14,85 +14,42 @@ export function registerThreadTools(server: McpServer) {
   );
 
   server.tool(
-    'get_current_thread',
-    'Get info about the currently active thread',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/threads/current');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_thread',
-    'Get info about a specific thread by its thread ID',
-    { id: z.string().describe('Thread ID (decimal)') },
-    async ({ id }) => {
-      const data = await httpClient.get('/api/threads/get', { id });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'switch_thread',
-    'Switch the debugger focus to a different thread',
-    { id: z.number().describe('Thread ID to switch to') },
-    async ({ id }) => {
-      const data = await httpClient.post('/api/threads/switch', { id });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'suspend_thread',
-    'Suspend a thread (increment suspend count)',
-    { id: z.number().describe('Thread ID to suspend') },
-    async ({ id }) => {
-      const data = await httpClient.post('/api/threads/suspend', { id });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'resume_thread',
-    'Resume a suspended thread (decrement suspend count)',
-    { id: z.number().describe('Thread ID to resume') },
-    async ({ id }) => {
-      const data = await httpClient.post('/api/threads/resume', { id });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_thread_count',
-    'Get the total number of threads in the debugged process',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/threads/count');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'get_thread_teb',
-    'Get the TEB (Thread Environment Block) address for a thread',
+    'get_thread_info',
+    'Get information about threads (current, specific by ID, total count, TEB address, or thread name)',
     {
-      tid: z.string().describe('Thread ID (decimal)'),
+      action: z.enum(['current', 'specific', 'count', 'teb', 'name']).describe('The kind of info to fetch'),
+      tid: z.string().optional().describe('Thread ID (decimal), required for specific/teb/name')
     },
-    async ({ tid }) => {
-      const data = await httpClient.get('/api/threads/teb', { tid });
+    async ({ action, tid }) => {
+      let data: any;
+      switch (action) {
+        case 'current':
+          data = await httpClient.get('/api/threads/current');
+          break;
+        case 'count':
+          data = await httpClient.get('/api/threads/count');
+          break;
+        case 'specific':
+        case 'teb':
+        case 'name':
+          if (!tid) throw new Error("tid is required");
+          const ep = action === 'specific' ? 'get' : action;
+          data = await httpClient.get(`/api/threads/${ep}`, action === 'specific' ? { id: tid } : { tid });
+          break;
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
 
   server.tool(
-    'get_thread_name',
-    'Get the name of a thread by its thread ID',
+    'manage_thread',
+    'Perform actions on a thread (switch focus, suspend, or resume)',
     {
-      tid: z.string().describe('Thread ID (decimal)'),
+      action: z.enum(['switch', 'suspend', 'resume']).describe('Action to perform'),
+      id: z.number().describe('Thread ID (decimal)')
     },
-    async ({ tid }) => {
-      const data = await httpClient.get('/api/threads/name', { tid });
+    async ({ action, id }) => {
+      const data = await httpClient.post(`/api/threads/${action}`, { id });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

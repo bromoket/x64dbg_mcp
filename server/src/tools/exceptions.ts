@@ -4,37 +4,25 @@ import { httpClient } from '../http_client.js';
 
 export function registerExceptionTools(server: McpServer) {
   server.tool(
-    'set_exception_breakpoint',
-    'Set an exception breakpoint on a specific exception code. VM protectors trigger exceptions for control flow obfuscation.',
+    'manage_exception_breakpoint',
+    'Set, delete, or list exception breakpoints',
     {
-      code: z.string().describe('Exception code (hex, e.g. "C0000005" for ACCESS_VIOLATION, "80000003" for BREAKPOINT)'),
-      chance: z.enum(['first', 'second', 'all']).optional().default('first').describe('Exception chance: first, second, or all'),
-      action: z.enum(['break', 'log', 'command']).optional().default('break').describe('Action to take'),
+      action: z.enum(['set', 'delete', 'list']).describe('Action to perform'),
+      code: z.string().optional().describe('Exception code (hex, e.g. "C0000005") (required for set/delete)'),
+      chance: z.enum(['first', 'second', 'all']).optional().default('first').describe('Exception chance (used with set)'),
+      bp_action: z.enum(['break', 'log', 'command']).optional().default('break').describe('Action to take (used with set)')
     },
-    async ({ code, chance, action }) => {
-      const data = await httpClient.post('/api/exceptions/set_bp', { code, chance, action });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'delete_exception_breakpoint',
-    'Delete an exception breakpoint',
-    {
-      code: z.string().describe('Exception code to remove the breakpoint for'),
-    },
-    async ({ code }) => {
-      const data = await httpClient.post('/api/exceptions/delete_bp', { code });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'list_exception_breakpoints',
-    'List all active exception breakpoints',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/exceptions/list_bps');
+    async ({ action, code, chance, bp_action }) => {
+      let data: any;
+      if (action === 'set') {
+        if (!code) throw new Error("code is required for set");
+        data = await httpClient.post('/api/exceptions/set_bp', { code, chance, action: bp_action });
+      } else if (action === 'delete') {
+        if (!code) throw new Error("code is required for delete");
+        data = await httpClient.post('/api/exceptions/delete_bp', { code });
+      } else {
+        data = await httpClient.get('/api/exceptions/list_bps');
+      }
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );

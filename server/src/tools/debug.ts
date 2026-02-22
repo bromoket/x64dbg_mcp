@@ -4,114 +4,58 @@ import { httpClient } from '../http_client.js';
 
 export function registerDebugTools(server: McpServer) {
   server.tool(
-    'get_health',
-    'Check if the x64dbg MCP plugin is running and responsive. Returns version, plugin name, and status.',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/health');
+    'execute_debug_action',
+    'Execute a fundamental debugger action (run, pause, step, stop, restart, run_to_address)',
+    {
+      action: z.enum([
+        'run', 'pause', 'force_pause', 'step_into', 'step_over', 'step_out',
+        'stop_debug', 'restart_debug', 'run_to_address'
+      ]).describe('The debug action to perform'),
+      address: z.string().optional().describe('Target address (required only for run_to_address)')
+    },
+    async ({ action, address }) => {
+      let endpoint = '';
+      let payload: any = undefined;
+
+      switch(action) {
+        case 'run': endpoint = '/api/debug/run'; break;
+        case 'pause': endpoint = '/api/debug/pause'; break;
+        case 'force_pause': endpoint = '/api/debug/force_pause'; break;
+        case 'step_into': endpoint = '/api/debug/step_into'; break;
+        case 'step_over': endpoint = '/api/debug/step_over'; break;
+        case 'step_out': endpoint = '/api/debug/step_out'; break;
+        case 'stop_debug': endpoint = '/api/debug/stop'; break;
+        case 'restart_debug': endpoint = '/api/debug/restart'; break;
+        case 'run_to_address':
+          endpoint = '/api/debug/run_to';
+          if (!address) throw new Error("address is required for run_to_address");
+          payload = { address };
+          break;
+      }
+
+      const data = await httpClient.post(endpoint, payload);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     }
   );
 
   server.tool(
     'get_debug_state',
-    'Get the current debugger state (stopped/running/paused), CIP, and module info',
-    {},
-    async () => {
-      const data = await httpClient.get('/api/debug/state');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
+    'Get the overall debugger state, health, and current instruction pointer (CIP)',
+    {
+      include_health: z.boolean().optional().default(false).describe('Also check plugin health/version')
+    },
+    async ({ include_health }) => {
+      const stateData = await httpClient.get('/api/debug/state');
+      let result: any = { state: stateData };
 
-  server.tool(
-    'run',
-    'Resume execution of the debugged process',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/run');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'pause',
-    'Pause execution of the debugged process',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/pause');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'step_into',
-    'Execute a single instruction, stepping into calls',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/step_into');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'step_over',
-    'Execute a single instruction, stepping over calls',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/step_over');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'step_out',
-    'Run until the current function returns',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/step_out');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'stop_debug',
-    'Stop the current debug session',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/stop');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'restart_debug',
-    'Restart the debugged process from the beginning',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/restart');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'run_to_address',
-    'Run execution until a specific address is reached',
-    { address: z.string().describe('Target address to run to (hex string, e.g. "0x401000")') },
-    async ({ address }) => {
-      const data = await httpClient.post('/api/debug/run_to', { address });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    'force_pause',
-    'Force the debuggee to pause even when high-frequency fast-resume breakpoints are active. ' +
-    'Normal pause often loses the race against fast-resume BPs firing at high frequency (e.g. 46/sec). ' +
-    'This temporarily disables fast-resume on all breakpoints, sends pause, waits, then restores fast-resume.',
-    {},
-    async () => {
-      const data = await httpClient.post('/api/debug/force_pause');
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      if (include_health) {
+        try {
+          result.health = await httpClient.get('/api/health');
+        } catch (e) {
+          result.health = { error: "Health check failed" };
+        }
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
   );
 }
