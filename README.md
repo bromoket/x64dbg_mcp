@@ -423,7 +423,7 @@ x64dbg_mcp/
 │           └── format_utils.*      # Address formatting, hex parsing
 │
 ├── server/                         # TypeScript MCP server (npm package)
-│   ├── package.json                # x64dbg-mcp-server v2.2.0
+│   ├── package.json                # x64dbg-mcp-server v2.2.1
 │   ├── tsconfig.json               # ES2022, Node16, strict mode
 │   ├── server.json                 # MCP registry manifest
 │   └── src/
