@@ -304,8 +304,8 @@ Environment variables for the MCP server:
 |----------|---------|-------------|
 | `X64DBG_MCP_HOST` | `127.0.0.1` | Plugin REST API host |
 | `X64DBG_MCP_PORT` | `27042` | Plugin REST API port |
-| `X64DBG_MCP_TIMEOUT` | `30000` | Request timeout in milliseconds |
-| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient failures |
+| `X64DBG_MCP_TIMEOUT` | `0` | Per-request timeout in milliseconds. `0` = wait indefinitely (default), since debugger operations like run/trace are unbounded. Set a positive value for a hard ceiling. |
+| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient connection failures (not applied to timeouts) |
 
 Set these in your MCP client config if needed:
 
@@ -571,9 +571,20 @@ If the plugin doesn't appear in the x64dbg log on startup:
 3. Check if another plugin is conflicting on port 27042
 4. Try manually: type `mcpserver start` in the x64dbg command bar
 
+### "Entry point `_DllMain@12` could not be located in ...x64dbg_mcp.dp32"
+
+This affected `x32dbg` on newer x64dbg snapshots and is fixed in the latest
+plugin build. **Download the latest `x64dbg_mcp.dp32`/`.dp64` from
+[Releases](https://github.com/bromoket/x64dbg_mcp/releases)** and replace the old
+DLLs. (Cause: older builds lacked an explicit `DllMain` entry point that newer
+x64dbg loaders require.)
+
 ### Request timeouts
 
-For operations on large binaries (full memory scan, module dump), increase the timeout:
+By default the server waits indefinitely, because debugger operations such as
+run/continue and conditional traces are unbounded. If you want a hard ceiling
+(e.g. to fail fast when the plugin is unresponsive), set a positive millisecond
+value:
 
 ```bash
 X64DBG_MCP_TIMEOUT=120000 npx -y x64dbg-mcp-server

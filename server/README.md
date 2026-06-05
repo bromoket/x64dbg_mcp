@@ -229,8 +229,8 @@ Each tool accepts an `action` parameter that selects the specific operation.
 |----------|---------|-------------|
 | `X64DBG_MCP_HOST` | `127.0.0.1` | Plugin REST API host |
 | `X64DBG_MCP_PORT` | `27042` | Plugin REST API port |
-| `X64DBG_MCP_TIMEOUT` | `30000` | Request timeout (ms) |
-| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient failures |
+| `X64DBG_MCP_TIMEOUT` | `0` | Per-request timeout (ms). `0` = wait indefinitely (default); set a positive value for a hard ceiling. |
+| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient connection failures (not applied to timeouts) |
 
 ### Plugin Commands
 

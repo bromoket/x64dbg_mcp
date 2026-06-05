@@ -20,7 +20,8 @@ async function main() {
 
   // Log to stderr (stdout is used by MCP protocol)
   console.error(`[x64dbg-mcp] Server started (23 tools), plugin expected at ${config.host}:${config.port}`);
-  console.error(`[x64dbg-mcp] Timeout: ${config.timeout}ms, Retries: ${config.retries}`);
+  const timeout_desc = config.timeout > 0 ? `${config.timeout}ms` : 'none (waits indefinitely)';
+  console.error(`[x64dbg-mcp] Timeout: ${timeout_desc}, Retries: ${config.retries}`);
 
   // Graceful shutdown
   const cleanup = () => {

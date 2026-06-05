@@ -178,15 +178,21 @@ export class HttpClient {
 
     for (let attempt = 0; attempt <= config.retries; attempt++) {
       try {
+        // config.timeout === 0 means "no timeout": debugger operations such as
+        // run/continue and conditional traces are unbounded, so by default we
+        // wait as long as the plugin needs (same as talking to it with curl).
         const controller = new AbortController();
-        const timeout_id = setTimeout(() => controller.abort(), config.timeout);
+        const timeout_id =
+          config.timeout > 0
+            ? setTimeout(() => controller.abort(), config.timeout)
+            : null;
 
         const response = await fetch(url, {
           ...options,
           signal: controller.signal,
         });
 
-        clearTimeout(timeout_id);
+        if (timeout_id) clearTimeout(timeout_id);
 
         const text = await response.text();
         let parsed: PluginResponse<T>;
@@ -218,18 +224,17 @@ export class HttpClient {
           throw last_error;
         }
 
-        // Handle timeout
+        // Handle timeout. We do NOT retry here: a timeout means a long-running
+        // debugger operation (run, trace, step-over-call) was still in progress,
+        // and retrying would just restart it from scratch and time out again.
+        // Fail fast and tell the user how to raise or remove the limit.
         if (last_error.name === 'AbortError') {
           this.consecutive_failures++;
-          if (attempt >= config.retries) {
-            throw new Error(
-              `Request timed out after ${config.timeout}ms (${attempt + 1} attempts). ` +
-              `The plugin may be busy with a long operation.`
-            );
-          }
-          // Brief pause before retry on timeout
-          await new Promise(resolve => setTimeout(resolve, 500));
-          continue;
+          throw new Error(
+            `Request timed out after ${config.timeout}ms. The plugin may be busy ` +
+            `with a long operation (run, trace, step-over-call). Raise the limit ` +
+            `with X64DBG_MCP_TIMEOUT=<ms>, or set X64DBG_MCP_TIMEOUT=0 to wait indefinitely.`
+          );
         }
 
         // Connection errors mid-request: the plugin may have restarted
