@@ -35,6 +35,11 @@ struct s_http_response {
         return error(400, message);
     }
 
+    // 401 Unauthorized (missing/invalid auth token)
+    static s_http_response unauthorized(const std::string& message = "Unauthorized") {
+        return error(401, message);
+    }
+
     // 404 Not Found
     static s_http_response not_found(const std::string& message = "Not found") {
         return error(404, message);
@@ -57,9 +62,10 @@ struct s_http_response {
         oss << "Content-Type: " << content_type << "\r\n";
         oss << "Content-Length: " << body.size() << "\r\n";
         oss << "Connection: close\r\n";
-        oss << "Access-Control-Allow-Origin: *\r\n";
-        oss << "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
-        oss << "Access-Control-Allow-Headers: Content-Type\r\n";
+        // No permissive CORS: this is a localhost-only API consumed by the Node
+        // MCP server (which is not subject to CORS). Emitting "Allow-Origin: *"
+        // would let any web page in a local browser drive the debugger, so we
+        // deliberately send no Access-Control-Allow-* headers.
         oss << "\r\n";
         oss << body;
         return oss.str();
@@ -70,6 +76,7 @@ private:
         switch (status_code) {
             case 200: return "OK";
             case 400: return "Bad Request";
+            case 401: return "Unauthorized";
             case 404: return "Not Found";
             case 405: return "Method Not Allowed";
             case 409: return "Conflict";

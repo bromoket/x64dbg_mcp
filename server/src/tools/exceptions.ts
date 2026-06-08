@@ -11,8 +11,7 @@ export function registerExceptionTools(server: McpServer) {
         z.object({
           action: z.literal("set"),
           code: z.string().describe("Exception code (hex, e.g. C0000005)"),
-          chance: z.enum(['first', 'second', 'all']).optional().default("first"),
-          bp_action: z.enum(['break', 'log', 'command']).optional().default("break")
+          chance: z.enum(['first', 'second', 'all']).optional().default("first")
         }),
         z.object({ action: z.literal("delete"), code: z.string() }),
         z.object({ action: z.literal("list") }),
@@ -23,7 +22,7 @@ export function registerExceptionTools(server: McpServer) {
     async ({ action }) => {
       let data: any;
       switch (action.action) {
-        case 'set': data = await httpClient.post('/api/exceptions/set_bp', { code: action.code, chance: action.chance, action: action.bp_action }); break;
+        case 'set': data = await httpClient.post('/api/exceptions/set_bp', { code: action.code, chance: action.chance }); break;
         case 'delete': data = await httpClient.post('/api/exceptions/delete_bp', { code: action.code }); break;
         case 'list': data = await httpClient.get('/api/exceptions/list_bps'); break;
         case 'list_codes': data = await httpClient.get('/api/exceptions/list_codes'); break;

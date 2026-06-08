@@ -2,9 +2,59 @@
 #include "bridge/c_bridge_executor.h"
 #include "util/format_utils.h"
 
+#include <algorithm>
+#include <cctype>
+#include <string>
 #include <nlohmann/json.hpp>
+#include "bridgemain.h"
 
 namespace handlers {
+
+namespace {
+
+struct sym_collect {
+    nlohmann::json* arr = nullptr;
+    std::string filter; // lowercase substring; empty = no filter
+    size_t limit = 0;
+};
+
+std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+// Non-capturing callback so it converts to the C function pointer CBSYMBOLENUM.
+bool sym_enum_cb(const SYMBOLPTR* symbol, void* user) {
+    auto* ctx = static_cast<sym_collect*>(user);
+    if (ctx->arr->size() >= ctx->limit) {
+        return false; // stop enumeration
+    }
+
+    SYMBOLINFOCPP info; // RAII: frees decorated/undecorated on scope exit
+    DbgGetSymbolInfo(symbol, &info);
+
+    std::string decorated = info.decoratedSymbol ? info.decoratedSymbol : "";
+    std::string undecorated = info.undecoratedSymbol ? info.undecoratedSymbol : "";
+
+    if (!ctx->filter.empty()) {
+        auto hay = to_lower(decorated + " " + undecorated);
+        if (hay.find(ctx->filter) == std::string::npos) {
+            return true; // skip, keep going
+        }
+    }
+
+    ctx->arr->push_back({
+        {"address",     format_utils::format_address(info.addr)},
+        {"decorated",   decorated},
+        {"undecorated", undecorated},
+        {"type",        static_cast<int>(info.type)},
+        {"ordinal",     info.ordinal}
+    });
+    return true;
+}
+
+} // namespace
 
 void register_symbol_routes(c_http_router& router) {
     // GET /api/symbols/resolve?name=... - Name to address
@@ -70,19 +120,26 @@ void register_symbol_routes(c_http_router& router) {
             return s_http_response::bad_request("Missing 'pattern' query parameter");
         }
 
-        // Use x64dbg's symfind command via expression evaluation
-        // Build a filter expression
-        auto search_expr = module.empty() ? pattern : module + "." + pattern;
+        // Resolve the module to search: explicit module, else the main module.
+        auto base = module.empty() ? bridge.eval_expression("mod.main()")
+                                   : bridge.get_module_base(module);
+        if (base == 0) {
+            return s_http_response::not_found(
+                module.empty() ? "No main module" : ("Module not found: " + module));
+        }
 
-        // Use the command to search and retrieve through eval
-        auto cmd = "symfind " + search_expr;
-        bridge.exec_command(cmd);
+        constexpr size_t kLimit = 1000;
+        auto symbols = nlohmann::json::array();
+        sym_collect ctx{&symbols, to_lower(pattern), kLimit};
+        DbgSymbolEnum(base, sym_enum_cb, &ctx);
 
-        // Since symfind outputs to log, we return what we can resolve
         return s_http_response::ok({
-            {"pattern",  pattern},
-            {"module",   module},
-            {"message",  "Symbol search initiated. Check x64dbg symbol view for results."}
+            {"pattern",   pattern},
+            {"module",    module},
+            {"base",      format_utils::format_address(base)},
+            {"symbols",   symbols},
+            {"count",     symbols.size()},
+            {"truncated", symbols.size() >= kLimit}
         });
     });
 
@@ -103,13 +160,20 @@ void register_symbol_routes(c_http_router& router) {
             return s_http_response::not_found("Module not found: " + module);
         }
 
-        // Trigger symbol loading for the module
+        // Make sure symbols are loaded, then enumerate them.
         bridge.exec_command("symload " + module);
 
+        constexpr size_t kLimit = 5000;
+        auto symbols = nlohmann::json::array();
+        sym_collect ctx{&symbols, "", kLimit};
+        DbgSymbolEnum(base, sym_enum_cb, &ctx);
+
         return s_http_response::ok({
-            {"module",  module},
-            {"base",    format_utils::format_address(base)},
-            {"message", "Symbols loaded. Use symbol search to find specific symbols."}
+            {"module",    module},
+            {"base",      format_utils::format_address(base)},
+            {"symbols",   symbols},
+            {"count",     symbols.size()},
+            {"truncated", symbols.size() >= kLimit}
         });
     });
 }

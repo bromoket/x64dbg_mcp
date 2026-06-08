@@ -1,6 +1,7 @@
 #include "http/c_http_router.h"
 #include "bridge/c_bridge_executor.h"
 #include "util/format_utils.h"
+#include "util/trace_state.h"
 
 #include <nlohmann/json.hpp>
 #include "bridgemain.h"
@@ -9,6 +10,12 @@
 namespace handlers {
 
 void register_tracing_routes(c_http_router& router) {
+    // GET /api/trace/status - Whether a run-trace is active (driven by the
+    // CB_STARTTRACE / CB_STOPTRACE callbacks) and the file it writes to.
+    router.get("/api/trace/status", [](const s_http_request&) -> s_http_response {
+        return s_http_response::ok(mcp::trace_status());
+    });
+
     // POST /api/trace/into - Trace into (conditional)
     router.post("/api/trace/into", [](const s_http_request& req) -> s_http_response {
         auto& bridge = get_bridge();
@@ -232,13 +239,24 @@ void register_tracing_routes(c_http_router& router) {
         auto cmd_condition = body.value("command_condition", "");
         auto trace_type = body.value("type", "into"); // into or over
 
-        std::string cmd;
-        if (trace_type == "over") {
-            cmd = "TraceOverConditional";
-        } else {
-            cmd = "TraceIntoConditional";
+        // Apply the per-step log and command settings BEFORE starting the trace,
+        // so they actually take effect (previously these were parsed and dropped).
+        if (!log_text.empty()) {
+            std::string log_cmd = "TraceSetLog \"" + log_text + "\"";
+            if (!log_condition.empty()) {
+                log_cmd += ", " + log_condition;
+            }
+            bridge.exec_command(log_cmd);
+        }
+        if (!cmd_text.empty()) {
+            std::string trace_cmd = "TraceSetCommand \"" + cmd_text + "\"";
+            if (!cmd_condition.empty()) {
+                trace_cmd += ", " + cmd_condition;
+            }
+            bridge.exec_command(trace_cmd);
         }
 
+        std::string cmd = (trace_type == "over") ? "TraceOverConditional" : "TraceIntoConditional";
         if (!break_condition.empty()) {
             cmd += " " + break_condition;
         }
@@ -249,6 +267,8 @@ void register_tracing_routes(c_http_router& router) {
             {"success", success},
             {"command", cmd},
             {"type", trace_type},
+            {"log_text", log_text},
+            {"command_text", cmd_text},
             {"message", "Conditional trace started (async)"}
         });
     });
@@ -265,22 +285,30 @@ void register_tracing_routes(c_http_router& router) {
         auto text = body.value("text", "");
         auto condition = body.value("condition", "");
 
-        std::string cmd;
-        if (!file.empty()) {
-            cmd = "StartRunTrace " + file;
-            if (!text.empty()) {
-                cmd += ", " + text;
-            }
-        } else {
+        if (file.empty()) {
             return s_http_response::bad_request("Missing 'file' field for trace log output");
         }
 
-        auto success = bridge.exec_command(cmd);
+        // Configure trace logging: where the log goes, and what/when to log.
+        // 'condition' is now honored (previously parsed and dropped).
+        auto file_cmd = "TraceSetLogFile \"" + file + "\"";
+        auto file_ok = bridge.exec_command(file_cmd);
+
+        std::string log_cmd = "TraceSetLog";
+        if (!text.empty()) {
+            log_cmd += " \"" + text + "\"";
+            if (!condition.empty()) {
+                log_cmd += ", " + condition;
+            }
+        }
+        auto log_ok = bridge.exec_command(log_cmd);
 
         return s_http_response::ok({
-            {"success", success},
-            {"command", cmd},
-            {"file", file}
+            {"success",   file_ok && log_ok},
+            {"file",      file},
+            {"text",      text},
+            {"condition", condition},
+            {"message",   "Trace log configured. Run a conditional trace to start logging."}
         });
     });
 }

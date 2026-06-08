@@ -125,10 +125,13 @@ export function registerBreakpointTools(server: McpServer) {
         case 'list':
           const listData = await httpClient.get('/api/breakpoints/list');
           return { content: [{ type: 'text', text: JSON.stringify(listData, null, 2) }] };
-        case 'configure':
+        case 'configure': {
           endpoint = '/api/breakpoints/configure';
-          payload = { ...action };
+          // Strip the MCP-layer discriminator so it doesn't leak into the REST body.
+          const { action: _drop, ...rest } = action;
+          payload = rest;
           break;
+        }
         case 'configure_batch':
           endpoint = '/api/breakpoints/configure_batch';
           payload = { breakpoints: action.breakpoints };

@@ -19,12 +19,12 @@ agents operating the plugin).
                          stdio                        HTTP (localhost)
  MCP Client  <───────────────────>  TypeScript MCP  <──────────────────>  C++ Plugin
  (Claude,                           Server            127.0.0.1:27042     (inside x64dbg)
-  Cursor,                           23 mega-tools                         151 REST endpoints
+  Cursor,                           23 mega-tools                         153 REST endpoints
   etc.)                             Zod validation                        Bridge/Plugin SDK
 ```
 
 - **C++ Plugin** (`x64dbg_mcp.dp64` / `.dp32`) runs inside x64dbg as a lightweight REST API
-  server on `127.0.0.1:27042`. It wraps the x64dbg Bridge/Plugin SDK with 151 JSON endpoints
+  server on `127.0.0.1:27042`. It wraps the x64dbg Bridge/Plugin SDK with 153 JSON endpoints
   across 22 handler files.
 - **TypeScript MCP Server** (`x64dbg-mcp-server` on npm) implements the MCP protocol over
   stdio. The 23 mega-tools use Zod discriminated unions to validate parameters, then route
@@ -75,7 +75,7 @@ validated with Zod schemas at runtime.
 | Tool | Actions | Description |
 |------|---------|-------------|
 | `x64dbg_breakpoints` | `set_software`, `set_hardware`, `set_memory`, `delete`, `enable`, `disable`, `toggle`, `set_condition`, `set_log`, `reset_hit_count`, `get`, `list`, `configure`, `configure_batch` | Full breakpoint management: software, hardware, memory, conditional, logging, batch |
-| `x64dbg_tracing` | `into`, `over`, `run`, `stop`, `animate`, `conditional_run`, `log_setup`, `hitcount`, `type`, `set_type` | Execution tracing, trace logging, hit counters, conditional tracing |
+| `x64dbg_tracing` | `into`, `over`, `run`, `stop`, `status`, `animate`, `conditional_run`, `log_setup`, `hitcount`, `type`, `set_type` | Execution tracing, trace logging, hit counters, conditional tracing, live trace status |
 | `x64dbg_exceptions` | `set`, `delete`, `list`, `list_codes`, `skip` | Exception breakpoints, known exception codes, skip/pass exceptions |
 
 ### Symbols & annotations
@@ -111,7 +111,8 @@ Environment variables for the MCP server:
 | `X64DBG_MCP_HOST` | `127.0.0.1` | Plugin REST API host |
 | `X64DBG_MCP_PORT` | `27042` | Plugin REST API port |
 | `X64DBG_MCP_TIMEOUT` | `0` | Per-request timeout in milliseconds. `0` = wait indefinitely (default), since debugger operations like run/trace are unbounded. Set a positive value for a hard ceiling. |
-| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient connection failures (not applied to timeouts) |
+| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient connection failures (not applied to timeouts, 4xx/5xx, or malformed responses) |
+| `X64DBG_MCP_TOKEN` | *(empty)* | Bearer token sent on every request. Must match the plugin's **Settings > Token**. Empty = no auth. |
 
 Set these in your MCP client config if needed:
 
@@ -141,7 +142,7 @@ mcpserver status    Show server status and port
 
 The plugin also provides GUI dialogs accessible from `Plugins > x64dbg MCP Server`:
 
-- **Settings...** — configure host, port, and auto-start (persisted via BridgeSetting)
+- **Settings...** — configure host, port, auto-start, and the optional auth token (persisted via BridgeSetting)
 - **About...** — version, live server status (green/red), GitHub link, Discord contact
 
 ## Architecture
@@ -166,7 +167,7 @@ The plugin also provides GUI dialogs accessible from `Plugins > x64dbg MCP Serve
 │  C++ Plugin DLL (x64dbg_mcp.dp64 / .dp32)                      │
 │                                                                 │
 │  Winsock2 HTTP server, JSON via nlohmann/json                   │
-│  22 handler files, 151 REST endpoints                           │
+│  22 handler files, 153 REST endpoints                           │
 │  c_bridge_executor: thread-safe calls to x64dbg SDK             │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ x64dbg Bridge/Plugin SDK
@@ -421,4 +422,7 @@ X64DBG_MCP_TIMEOUT=120000 npx -y x64dbg-mcp-server
 - The C++ plugin binds to `127.0.0.1` only — no remote access, no network exposure
 - The MCP server communicates exclusively via stdio (stdin/stdout)
 - All HTTP traffic stays on localhost — no data leaves your machine
-- No authentication is needed because the REST API is localhost-only
+- No permissive CORS headers are sent, so a local browser page cannot drive the debugger
+- Authentication is optional (localhost-only by default). Set a token in **Settings > Token**
+  and pass `X64DBG_MCP_TOKEN` to require `Authorization: Bearer <token>` on every request —
+  useful to keep other local processes out

@@ -16,6 +16,9 @@ export const config = {
   // 0 = no timeout (wait indefinitely). See parseTimeout above.
   timeout: parseTimeout(process.env.X64DBG_MCP_TIMEOUT),
   retries: parseInt(process.env.X64DBG_MCP_RETRIES ?? '3', 10),
+  // Optional auth token. When set, it must match the plugin's configured token
+  // (Settings > Token). Sent as "Authorization: Bearer <token>". Empty = no auth.
+  token: process.env.X64DBG_MCP_TOKEN ?? '',
 };
 
 export function getBaseUrl(): string {

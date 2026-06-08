@@ -24,13 +24,15 @@ void register_exception_routes(c_http_router& router) {
 
         auto code = body["code"].get<std::string>();
         auto chance = body.value("chance", "first"); // first, second, all
-        auto action = body.value("action", "break"); // break, log, command
 
-        auto cmd = "SetExceptionBPX " + code;
-        if (chance == "second") {
-            cmd += ", 1"; // second chance
+        // x64dbg's SetExceptionBPX expects the chance as a word ("first"/
+        // "second"/"all"); the numeric form maps 1->first, 2->second, 3->all,
+        // so the previous ", 1" silently set FIRST chance for "second".
+        if (chance != "first" && chance != "second" && chance != "all") {
+            return s_http_response::bad_request("chance must be 'first', 'second', or 'all'");
         }
 
+        auto cmd = "SetExceptionBPX " + code + ", " + chance;
         auto success = bridge.exec_command(cmd);
 
         return s_http_response::ok({

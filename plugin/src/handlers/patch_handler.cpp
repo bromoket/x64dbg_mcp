@@ -2,7 +2,10 @@
 #include "bridge/c_bridge_executor.h"
 #include "util/format_utils.h"
 
+#include <vector>
 #include <nlohmann/json.hpp>
+#include "bridgemain.h"
+#include "_dbgfunctions.h"
 
 namespace handlers {
 
@@ -14,11 +17,26 @@ void register_patch_routes(c_http_router& router) {
             return s_http_response::conflict("No active debug session");
         }
 
-        // Use patchlist command to show patches
-        bridge.exec_command("patchlist");
+        size_t count = 0;
+        DbgFunctions()->PatchEnum(nullptr, &count);
+
+        auto patches = nlohmann::json::array();
+        if (count > 0) {
+            std::vector<DBGPATCHINFO> list(count);
+            DbgFunctions()->PatchEnum(list.data(), &count);
+            for (size_t i = 0; i < count; ++i) {
+                patches.push_back({
+                    {"module",   list[i].mod},
+                    {"address",  format_utils::format_address(list[i].addr)},
+                    {"old_byte", format_utils::format_bytes_compact(&list[i].oldbyte, 1)},
+                    {"new_byte", format_utils::format_bytes_compact(&list[i].newbyte, 1)}
+                });
+            }
+        }
 
         return s_http_response::ok({
-            {"message", "Patch list displayed in x64dbg log. Use the patches dialog for full patch management."}
+            {"patches", patches},
+            {"count",   patches.size()}
         });
     });
 

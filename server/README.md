@@ -8,12 +8,13 @@
 or any MCP client in plain English and it sets breakpoints, reads memory, disassembles, traces,
 dumps PEs, and bypasses anti-debug — live, inside the debugger.
 
-**23 mega-tools** over **151 REST endpoints**, fully typed with Zod. This package is the
+**23 mega-tools** over **153 REST endpoints**, fully typed with Zod. This package is the
 TypeScript MCP server; it bridges your client to a C++ plugin running inside x64dbg. Everything
 stays on `127.0.0.1`.
 
-> **v2.2.2** — x32dbg loads again on newer x64dbg snapshots (explicit `DllMain`), and requests
-> no longer time out on unbounded operations (run/continue/trace wait indefinitely by default).
+> **v2.3.0** — hardened (malformed requests can't crash x64dbg; optional auth token; CORS locked
+> down), more tools return real data (`imports`/`exports`, `symbols`, `patches`, `strings`), and
+> a new `tracing status`. Plus the v2.2.x fixes (x32dbg loads, no spurious timeouts).
 > [Get the matching plugins →](https://github.com/bromoket/x64dbg_mcp/releases/latest)
 
 ## Install
@@ -90,7 +91,8 @@ anti-debug hide), and **patching & dumping** (patches, PE dump, IAT fix).
 | `X64DBG_MCP_HOST` | `127.0.0.1` | Plugin REST API host |
 | `X64DBG_MCP_PORT` | `27042` | Plugin REST API port |
 | `X64DBG_MCP_TIMEOUT` | `0` | Per-request timeout (ms). `0` = wait indefinitely (default); set a positive value for a hard ceiling. |
-| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient connection failures (not applied to timeouts) |
+| `X64DBG_MCP_RETRIES` | `3` | Retry count on transient connection failures (not applied to timeouts, 4xx/5xx, or malformed responses) |
+| `X64DBG_MCP_TOKEN` | *(empty)* | Bearer token sent on every request; must match the plugin's **Settings > Token**. Empty = no auth. |
 
 ```json
 {

@@ -2,6 +2,8 @@
 #include "bridge/c_bridge_executor.h"
 #include "util/format_utils.h"
 
+#include <cstdlib>
+#include <string>
 #include <nlohmann/json.hpp>
 #include "bridgemain.h"
 #include "_dbgfunctions.h"
@@ -354,14 +356,82 @@ void register_analysis_routes(c_http_router& router) {
             return s_http_response::not_found("Module not found: " + module_name);
         }
 
-        // Use x64dbg's strref command
-        auto cmd = "strref " + format_utils::format_address(base);
-        bridge.exec_command(cmd);
+        // Minimum run length (default 4), parsed without throwing.
+        int min_len = 4;
+        auto min_str = req.get_query("min_length", "");
+        if (!min_str.empty()) {
+            int parsed = std::atoi(min_str.c_str());
+            if (parsed >= 1 && parsed <= 1024) min_len = parsed;
+        }
+
+        auto mod_size = bridge.eval_expression("mod.size(" + module_name + ")");
+        constexpr duint kMaxScan = 64ull * 1024 * 1024; // cap scan to 64MB
+        if (mod_size == 0 || mod_size > kMaxScan) mod_size = kMaxScan;
+
+        constexpr size_t kMaxResults = 5000;
+        constexpr size_t kChunk = 1024 * 1024;
+        auto strings = nlohmann::json::array();
+        bool truncated = false;
+
+        auto is_printable = [](uint8_t c) { return c >= 0x20 && c <= 0x7E; };
+
+        for (duint off = 0; off < mod_size && !truncated; off += kChunk) {
+            size_t want = static_cast<size_t>(
+                (mod_size - off) < kChunk ? (mod_size - off) : kChunk);
+            auto buf = bridge.read_memory(base + off, want);
+            if (!buf.has_value()) continue; // unreadable page, skip
+            const auto& b = *buf;
+            const size_t n = b.size();
+
+            // ASCII runs
+            size_t run_start = 0;
+            bool in_run = false;
+            for (size_t i = 0; i < n; ++i) {
+                if (is_printable(b[i])) {
+                    if (!in_run) { in_run = true; run_start = i; }
+                } else if (in_run) {
+                    in_run = false;
+                    if (i - run_start >= static_cast<size_t>(min_len)) {
+                        strings.push_back({
+                            {"address", format_utils::format_address(base + off + run_start)},
+                            {"type",    "ascii"},
+                            {"value",   std::string(reinterpret_cast<const char*>(b.data() + run_start), i - run_start)}
+                        });
+                        if (strings.size() >= kMaxResults) { truncated = true; break; }
+                    }
+                }
+            }
+
+            // UTF-16LE runs (printable ASCII char followed by 0x00)
+            for (size_t i = 0; i + 1 < n && !truncated; ) {
+                if (is_printable(b[i]) && b[i + 1] == 0) {
+                    size_t start = i;
+                    std::string s;
+                    while (i + 1 < n && is_printable(b[i]) && b[i + 1] == 0) {
+                        s += static_cast<char>(b[i]);
+                        i += 2;
+                    }
+                    if (s.size() >= static_cast<size_t>(min_len)) {
+                        strings.push_back({
+                            {"address", format_utils::format_address(base + off + start)},
+                            {"type",    "utf16"},
+                            {"value",   s}
+                        });
+                        if (strings.size() >= kMaxResults) { truncated = true; break; }
+                    }
+                } else {
+                    ++i;
+                }
+            }
+        }
 
         return s_http_response::ok({
-            {"module",  module_name},
-            {"base",    format_utils::format_address(base)},
-            {"message", "String references displayed in x64dbg references view"}
+            {"module",    module_name},
+            {"base",      format_utils::format_address(base)},
+            {"strings",   strings},
+            {"count",     strings.size()},
+            {"min_length", min_len},
+            {"truncated", truncated}
         });
     });
 }

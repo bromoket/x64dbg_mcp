@@ -31,6 +31,10 @@ export class HttpClient {
     return this.state;
   }
 
+  private auth_headers(): Record<string, string> {
+    return config.token ? { Authorization: `Bearer ${config.token}` } : {};
+  }
+
   async get<T = unknown>(path: string, params?: Record<string, string>): Promise<T> {
     const url = new URL(path, this.base_url);
     if (params) {
@@ -41,14 +45,14 @@ export class HttpClient {
       }
     }
 
-    return this.request<T>(url.toString(), { method: 'GET' });
+    return this.request<T>(url.toString(), { method: 'GET', headers: this.auth_headers() });
   }
 
   async post<T = unknown>(path: string, body?: unknown): Promise<T> {
     const url = new URL(path, this.base_url);
     const options: RequestInit = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.auth_headers() },
     };
 
     if (body !== undefined) {
@@ -82,6 +86,7 @@ export class HttpClient {
 
       const response = await fetch(`${this.base_url}/api/health`, {
         method: 'GET',
+        headers: this.auth_headers(),
         signal: controller.signal,
       });
 
@@ -218,8 +223,15 @@ export class HttpClient {
       } catch (err) {
         last_error = err instanceof Error ? err : new Error(String(err));
 
-        // Don't retry on 4xx plugin errors - these are valid responses
-        if (last_error.message.includes('Plugin error (4')) {
+        // Don't retry on definite plugin responses - they are deterministic, and
+        // retrying a non-idempotent POST (memory/write, patches/apply, breakpoints/set)
+        // would double-apply the side effect. This covers 4xx, 5xx, and malformed
+        // JSON: the plugin answered, so the connection is alive.
+        if (
+          last_error.message.includes('Plugin error (4') ||
+          last_error.message.includes('Plugin error (5') ||
+          last_error.message.startsWith('Invalid JSON response')
+        ) {
           this.state = 'connected';
           throw last_error;
         }
@@ -231,9 +243,9 @@ export class HttpClient {
         if (last_error.name === 'AbortError') {
           this.consecutive_failures++;
           throw new Error(
-            `Request timed out after ${config.timeout}ms. The plugin may be busy ` +
-            `with a long operation (run, trace, step-over-call). Raise the limit ` +
-            `with X64DBG_MCP_TIMEOUT=<ms>, or set X64DBG_MCP_TIMEOUT=0 to wait indefinitely.`
+            `Request aborted after ${config.timeout}ms (X64DBG_MCP_TIMEOUT). The plugin may be ` +
+            `busy with a long operation (run, trace, step-over-call). Raise the limit with ` +
+            `X64DBG_MCP_TIMEOUT=<ms>, or set X64DBG_MCP_TIMEOUT=0 to wait indefinitely.`
           );
         }
 

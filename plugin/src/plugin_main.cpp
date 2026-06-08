@@ -3,12 +3,16 @@
 #include <string>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
+
+#include <nlohmann/json.hpp>
 
 #include "_plugins.h"
 #include "http/c_http_server.h"
 #include "http/c_http_router.h"
 #include "bridge/c_bridge_executor.h"
 #include "util/format_utils.h"
+#include "util/trace_state.h"
 #include "resources/plugin_icon.h"
 #include "ui/settings_dialog.h"
 #include "ui/about_dialog.h"
@@ -48,6 +52,55 @@ static c_http_router g_router;
 static s_plugin_settings g_settings;
 
 // ============================================================================
+// Trace state (shared with /api/trace/status via util/trace_state.h)
+// ============================================================================
+
+static std::mutex g_trace_mutex;
+static bool g_trace_active = false;
+static std::string g_trace_file;
+
+namespace mcp {
+
+void trace_set_active(bool active, const std::string& file) {
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    g_trace_active = active;
+    g_trace_file = active ? file : "";
+}
+
+nlohmann::json trace_status() {
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    return nlohmann::json{
+        {"tracing", g_trace_active},
+        {"file",    g_trace_file}
+    };
+}
+
+} // namespace mcp
+
+// x64dbg fires these on the debugger thread when a run-trace starts/stops
+// (CB_STARTTRACE / CB_STOPTRACE, added in the 2026.05.27 SDK). Registered
+// explicitly in plugsetup because the loader does not auto-register them by
+// export name.
+static void cb_start_trace(CBTYPE, void* cb_info) {
+    auto* info = static_cast<PLUG_CB_STARTTRACE*>(cb_info);
+    mcp::trace_set_active(true, (info && info->traceFilePath) ? info->traceFilePath : "");
+}
+
+static void cb_stop_trace(CBTYPE, void*) {
+    mcp::trace_set_active(false, "");
+}
+
+// ============================================================================
+// Server lifecycle helper
+// ============================================================================
+
+// Apply current settings (incl. auth token) and start the server.
+static std::expected<void, std::string> start_server() {
+    g_server.set_auth_token(g_settings.auth_token);
+    return g_server.start(g_settings.host, g_settings.port, &g_router);
+}
+
+// ============================================================================
 // Menu helpers
 // ============================================================================
 
@@ -79,12 +132,17 @@ static void load_settings() {
     if (BridgeSettingGetUint(SETTINGS_SECTION, SETTINGS_KEY_AUTOSTART, &autostart_val)) {
         g_settings.auto_start = (autostart_val != 0);
     }
+
+    if (BridgeSettingGet(SETTINGS_SECTION, SETTINGS_KEY_TOKEN, buf)) {
+        strncpy_s(g_settings.auth_token, buf, _TRUNCATE);
+    }
 }
 
 static void save_settings() {
     BridgeSettingSet(SETTINGS_SECTION, SETTINGS_KEY_HOST, g_settings.host);
     BridgeSettingSetUint(SETTINGS_SECTION, SETTINGS_KEY_PORT, g_settings.port);
     BridgeSettingSetUint(SETTINGS_SECTION, SETTINGS_KEY_AUTOSTART, g_settings.auto_start ? 1 : 0);
+    BridgeSettingSet(SETTINGS_SECTION, SETTINGS_KEY_TOKEN, g_settings.auth_token);
     BridgeSettingFlush();
 }
 
@@ -96,7 +154,7 @@ void register_all_routes(c_http_router& router) {
     // Health check endpoint
     router.get("/api/health", [](const s_http_request&) -> s_http_response {
         return s_http_response::ok({
-            {"version", "1.0.0"},
+            {"version", PLUGIN_VERSION_STR},
             {"plugin",  PLUGIN_NAME},
             {"status",  "ok"}
         });
@@ -164,7 +222,7 @@ static bool mcp_server_command(int argc, char* argv[]) {
             return true;
         }
 
-        auto result = g_server.start(g_settings.host, g_settings.port, &g_router);
+        auto result = start_server();
         if (result.has_value()) {
             _plugin_logprintf("[MCP] Server started on %s:%u\n", g_settings.host, g_settings.port);
         } else {
@@ -222,12 +280,19 @@ PLUG_EXPORT bool pluginit(PLUG_INITSTRUCT* init_struct) {
     // Register the mcpserver command
     _plugin_registercommand(g_plugin_handle, "mcpserver", mcp_server_command, false);
 
+    // Trace lifecycle callbacks (no-op on x64dbg versions that don't fire them).
+    // These are not auto-registered by export name, so register explicitly.
+    _plugin_registercallback(g_plugin_handle, CB_STARTTRACE, cb_start_trace);
+    _plugin_registercallback(g_plugin_handle, CB_STOPTRACE, cb_stop_trace);
+
     return true;
 }
 
 PLUG_EXPORT bool plugstop() {
-    // Unregister command
+    // Unregister command + callbacks
     _plugin_unregistercommand(g_plugin_handle, "mcpserver");
+    _plugin_unregistercallback(g_plugin_handle, CB_STARTTRACE);
+    _plugin_unregistercallback(g_plugin_handle, CB_STOPTRACE);
 
     // Stop the HTTP server
     g_server.stop();
@@ -262,7 +327,7 @@ PLUG_EXPORT void plugsetup(PLUG_SETUPSTRUCT* setup_struct) {
 
     // Auto-start the server (if enabled in settings)
     if (g_settings.auto_start) {
-        auto result = g_server.start(g_settings.host, g_settings.port, &g_router);
+        auto result = start_server();
         if (result.has_value()) {
             _plugin_logprintf("[MCP] x64dbg MCP Server started on %s:%u\n",
                 g_settings.host, g_settings.port);
@@ -286,7 +351,7 @@ PLUG_EXPORT void CBMENUENTRY(CBTYPE, void* call_info) {
         if (g_server.is_running()) {
             _plugin_logputs("[MCP] Server is already running");
         } else {
-            auto result = g_server.start(g_settings.host, g_settings.port, &g_router);
+            auto result = start_server();
             if (result.has_value()) {
                 _plugin_logprintf("[MCP] Server started on %s:%u\n",
                     g_settings.host, g_settings.port);
@@ -322,7 +387,7 @@ PLUG_EXPORT void CBMENUENTRY(CBTYPE, void* call_info) {
 
             if (g_server.is_running() && (host_changed || port_changed)) {
                 g_server.stop();
-                auto result = g_server.start(g_settings.host, g_settings.port, &g_router);
+                auto result = start_server();
                 if (result.has_value()) {
                     _plugin_logprintf("[MCP] Server restarted on %s:%u\n",
                         g_settings.host, g_settings.port);

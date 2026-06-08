@@ -1,17 +1,30 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { config } from './config.js';
 import { httpClient } from './http_client.js';
 import { registerAllTools } from './tools/index.js';
 
+// Single source of truth for the version: package.json (next to dist/ in the
+// published package), so the reported version never drifts from the release.
+function getVersion(): string {
+  try {
+    const pkgUrl = new URL('../package.json', import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 async function main() {
   const server = new McpServer({
     name: 'x64dbg',
-    version: '2.1.0',
+    version: getVersion(),
   });
 
-  // Register all tools (23 mega-tools consolidated from 152)
+  // Register all tools
   registerAllTools(server);
 
   // Connect via stdio (rock-solid transport, no connection drops)

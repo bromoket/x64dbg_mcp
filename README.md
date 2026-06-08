@@ -8,17 +8,22 @@
 or any MCP client in plain English and it sets breakpoints, reads memory, disassembles, traces,
 dumps PEs, and bypasses anti-debug — live, inside the debugger.
 
-**23 mega-tools** over **151 REST endpoints**, fully typed with Zod. A C++ plugin runs inside
+**23 mega-tools** over **153 REST endpoints**, fully typed with Zod. A C++ plugin runs inside
 x64dbg; a tiny TypeScript server bridges it to your client over stdio. Everything stays on
 `127.0.0.1` — nothing leaves your machine.
 
-> **Latest — v2.2.2**
-> - **x32dbg works again.** Newer x64dbg snapshots require an explicit `DllMain`; the 32-bit
->   plugin now loads cleanly (no more `_DllMain@12 could not be located`).
-> - **No more spurious timeouts.** Requests wait indefinitely by default — run, continue, and
->   conditional traces are unbounded operations, so they no longer get killed mid-flight.
+> **Latest — v2.3.0**
+> - **Hardened & crash-proof.** A malformed HTTP request can no longer crash x64dbg; the plugin
+>   server drains connections cleanly on stop and ships an **optional auth token** (CORS is
+>   locked down).
+> - **Real data from more tools.** `imports`/`exports`, `symbols` search/list, `patches` list,
+>   and `strings` now return actual parsed results instead of pointing you at a GUI view.
+> - **Live trace status.** New `/api/trace/status` (+ `tracing status`) reports whether a trace
+>   is running, and the exception/trace tools now honor every parameter they accept.
+> - Plus the v2.2.x fixes: x32dbg loads on current snapshots, and requests no longer time out
+>   on long operations.
 >
-> [Download the v2.2.2 plugins →](https://github.com/bromoket/x64dbg_mcp/releases/latest)
+> [Download the v2.3.0 plugins →](https://github.com/bromoket/x64dbg_mcp/releases/latest)
 
 ---
 
@@ -105,7 +110,9 @@ Every tool, action, and endpoint is documented in **[docs/REFERENCE.md](docs/REF
 ## Security
 
 The plugin binds to `127.0.0.1` only; the server talks pure stdio. All traffic stays on
-localhost — no remote access, no telemetry, no data leaves your machine.
+localhost — no remote access, no telemetry, no data leaves your machine. For defense against
+other local processes, set a token in the plugin's **Settings** and pass it via
+`X64DBG_MCP_TOKEN` — every request must then carry it.
 
 ## Author
 

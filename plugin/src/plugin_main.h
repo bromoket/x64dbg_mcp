@@ -8,7 +8,7 @@
 constexpr auto PLUGIN_NAME = "x64dbg MCP Server";
 constexpr auto PLUGIN_AUTHOR = "bromo";
 constexpr auto PLUGIN_VERSION = 1;
-constexpr auto PLUGIN_VERSION_STR = "2.2.1";
+constexpr auto PLUGIN_VERSION_STR = "2.3.0";
 constexpr auto PLUGIN_REPO_URL = "https://github.com/bromoket/x64dbg_mcp";
 constexpr uint16_t DEFAULT_PORT = 27042;
 constexpr auto DEFAULT_HOST = "127.0.0.1";
@@ -18,12 +18,14 @@ constexpr auto SETTINGS_SECTION = "MCP";
 constexpr auto SETTINGS_KEY_HOST = "Host";
 constexpr auto SETTINGS_KEY_PORT = "Port";
 constexpr auto SETTINGS_KEY_AUTOSTART = "AutoStart";
+constexpr auto SETTINGS_KEY_TOKEN = "AuthToken";
 
 /// @brief Plugin settings persisted via BridgeSetting
 struct s_plugin_settings {
     char host[64] = "127.0.0.1";
     uint16_t port = 27042;
     bool auto_start = true;
+    char auth_token[128] = ""; // empty = no auth required
 };
 
 // Menu entry IDs

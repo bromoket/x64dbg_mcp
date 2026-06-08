@@ -14,9 +14,9 @@ export function registerThreadTools(server: McpServer) {
         z.object({ action: z.literal("info"), tid: z.string().describe("Thread ID (decimal)") }),
         z.object({ action: z.literal("teb"), tid: z.string() }),
         z.object({ action: z.literal("name"), tid: z.string() }),
-        z.object({ action: z.literal("switch"), id: z.number().describe("Thread ID (decimal)") }),
-        z.object({ action: z.literal("suspend"), id: z.number() }),
-        z.object({ action: z.literal("resume"), id: z.number() })
+        z.object({ action: z.literal("switch"), id: z.string().describe("Thread ID (decimal)") }),
+        z.object({ action: z.literal("suspend"), id: z.string() }),
+        z.object({ action: z.literal("resume"), id: z.string() })
       ])
     },
     async ({ action }) => {

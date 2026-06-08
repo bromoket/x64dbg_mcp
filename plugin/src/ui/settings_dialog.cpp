@@ -11,6 +11,8 @@ static constexpr WORD IDC_PORT_LABEL   = 102;
 static constexpr WORD IDC_PORT_EDIT    = 103;
 static constexpr WORD IDC_AUTOSTART    = 104;
 static constexpr WORD IDC_SEPARATOR    = 105;
+static constexpr WORD IDC_TOKEN_LABEL  = 106;
+static constexpr WORD IDC_TOKEN_EDIT   = 107;
 static constexpr WORD IDC_SAVE_BTN     = IDOK;
 static constexpr WORD IDC_CANCEL_BTN   = IDCANCEL;
 
@@ -70,11 +72,11 @@ static LPDLGTEMPLATE build_settings_template() {
     dlg->style = DS_MODALFRAME | DS_CENTER | DS_SETFONT
                | WS_POPUP | WS_CAPTION | WS_SYSMENU;
     dlg->dwExtendedStyle = 0;
-    dlg->cdit = 8;  // 2 labels + 2 edits + checkbox + separator + 2 buttons
+    dlg->cdit = 10;  // 3 labels + 3 edits + checkbox + separator + 2 buttons
     dlg->x = 0;
     dlg->y = 0;
     dlg->cx = 160;
-    dlg->cy = 82;
+    dlg->cy = 100;
 
     auto* ptr = reinterpret_cast<LPWORD>(dlg + 1);
 
@@ -108,23 +110,32 @@ static LPDLGTEMPLATE build_settings_template() {
         ES_AUTOHSCROLL | ES_NUMBER | WS_BORDER | WS_TABSTOP, 33, 23, 40, 12,
         IDC_PORT_EDIT, 0x0081, "");
 
-    // Row 3: Auto-start checkbox
+    // Row 3: Auth token (optional)
     ptr = add_dialog_item(ptr,
-        BS_AUTOCHECKBOX | WS_TABSTOP, 7, 41, 146, 10,
+        SS_RIGHT, 7, 43, 22, 8,
+        IDC_TOKEN_LABEL, 0x0082, "Token:");
+
+    ptr = add_dialog_item(ptr,
+        ES_AUTOHSCROLL | ES_PASSWORD | WS_BORDER | WS_TABSTOP, 33, 41, 120, 12,
+        IDC_TOKEN_EDIT, 0x0081, "");
+
+    // Row 4: Auto-start checkbox
+    ptr = add_dialog_item(ptr,
+        BS_AUTOCHECKBOX | WS_TABSTOP, 7, 59, 146, 10,
         IDC_AUTOSTART, 0x0080, "Auto-start server on plugin load");
 
     // Etched separator line
     ptr = add_dialog_item(ptr,
-        SS_ETCHEDHORZ, 7, 56, 146, 1,
+        SS_ETCHEDHORZ, 7, 74, 146, 1,
         IDC_SEPARATOR, 0x0082, "");
 
     // Buttons row (right-aligned)
     ptr = add_dialog_item(ptr,
-        BS_DEFPUSHBUTTON | WS_TABSTOP, 56, 63, 45, 14,
+        BS_DEFPUSHBUTTON | WS_TABSTOP, 56, 81, 45, 14,
         IDC_SAVE_BTN, 0x0080, "Save");
 
     ptr = add_dialog_item(ptr,
-        BS_PUSHBUTTON | WS_TABSTOP, 106, 63, 45, 14,
+        BS_PUSHBUTTON | WS_TABSTOP, 106, 81, 45, 14,
         IDC_CANCEL_BTN, 0x0080, "Cancel");
 
     return dlg;
@@ -145,6 +156,8 @@ static INT_PTR CALLBACK settings_dlg_proc(HWND hdlg, UINT msg, WPARAM wparam, LP
         char port_buf[16];
         std::snprintf(port_buf, sizeof(port_buf), "%u", settings->port);
         SetDlgItemTextA(hdlg, IDC_PORT_EDIT, port_buf);
+
+        SetDlgItemTextA(hdlg, IDC_TOKEN_EDIT, settings->auth_token);
 
         CheckDlgButton(hdlg, IDC_AUTOSTART,
             settings->auto_start ? BST_CHECKED : BST_UNCHECKED);
@@ -169,6 +182,8 @@ static INT_PTR CALLBACK settings_dlg_proc(HWND hdlg, UINT msg, WPARAM wparam, LP
                 return TRUE;
             }
             settings->port = static_cast<uint16_t>(port_val);
+
+            GetDlgItemTextA(hdlg, IDC_TOKEN_EDIT, settings->auth_token, sizeof(settings->auth_token));
 
             settings->auto_start =
                 (IsDlgButtonChecked(hdlg, IDC_AUTOSTART) == BST_CHECKED);

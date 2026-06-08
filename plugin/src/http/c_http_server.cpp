@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
+#include <chrono>
 #include <sstream>
 #include <mstcpip.h>
 
@@ -29,8 +31,8 @@ std::expected<void, std::string> c_http_server::start(
     }
 
     // Create listening socket
-    m_listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (m_listen_socket == INVALID_SOCKET) {
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) {
         auto err = WSAGetLastError();
         WSACleanup();
         return std::unexpected("socket() failed with error: " + std::to_string(err));
@@ -38,7 +40,7 @@ std::expected<void, std::string> c_http_server::start(
 
     // Allow address reuse
     int opt_val = 1;
-    setsockopt(m_listen_socket, SOL_SOCKET, SO_REUSEADDR,
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
                reinterpret_cast<const char*>(&opt_val), sizeof(opt_val));
 
     // Bind to localhost only
@@ -47,22 +49,21 @@ std::expected<void, std::string> c_http_server::start(
     addr.sin_port = htons(port);
     inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
 
-    if (bind(m_listen_socket, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+    if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
         auto err = WSAGetLastError();
-        closesocket(m_listen_socket);
-        m_listen_socket = INVALID_SOCKET;
+        closesocket(sock);
         WSACleanup();
         return std::unexpected("bind() failed with error: " + std::to_string(err));
     }
 
-    if (listen(m_listen_socket, SOMAXCONN) == SOCKET_ERROR) {
+    if (listen(sock, SOMAXCONN) == SOCKET_ERROR) {
         auto err = WSAGetLastError();
-        closesocket(m_listen_socket);
-        m_listen_socket = INVALID_SOCKET;
+        closesocket(sock);
         WSACleanup();
         return std::unexpected("listen() failed with error: " + std::to_string(err));
     }
 
+    m_listen_socket.store(sock);
     m_running.store(true);
     m_listener_thread = std::thread(&c_http_server::listener_loop, this);
 
@@ -77,14 +78,21 @@ void c_http_server::stop() {
     m_running.store(false);
 
     // Close the listening socket to unblock accept()
-    if (m_listen_socket != INVALID_SOCKET) {
-        closesocket(m_listen_socket);
-        m_listen_socket = INVALID_SOCKET;
+    SOCKET ls = m_listen_socket.exchange(INVALID_SOCKET);
+    if (ls != INVALID_SOCKET) {
+        closesocket(ls);
     }
 
     // Wait for the listener thread to finish
     if (m_listener_thread.joinable()) {
         m_listener_thread.join();
+    }
+
+    // Drain in-flight detached connection threads before WSACleanup, so they
+    // don't operate on a torn-down Winsock or the soon-to-be-freed router.
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(DRAIN_TIMEOUT_MS);
+    while (m_active_connections.load() > 0 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     WSACleanup();
@@ -94,9 +102,14 @@ void c_http_server::listener_loop() {
     // Use select() with timeout so we can check m_running periodically
     // instead of blocking forever in accept()
     while (m_running.load()) {
+        SOCKET ls = m_listen_socket.load();
+        if (ls == INVALID_SOCKET) {
+            break;
+        }
+
         fd_set read_set;
         FD_ZERO(&read_set);
-        FD_SET(m_listen_socket, &read_set);
+        FD_SET(ls, &read_set);
 
         timeval tv{};
         tv.tv_sec = 1;  // 1 second poll interval
@@ -116,7 +129,7 @@ void c_http_server::listener_loop() {
         int client_addr_len = sizeof(client_addr);
 
         SOCKET client_socket = accept(
-            m_listen_socket,
+            ls,
             reinterpret_cast<sockaddr*>(&client_addr),
             &client_addr_len
         );
@@ -131,96 +144,171 @@ void c_http_server::listener_loop() {
     }
 }
 
+bool c_http_server::is_authorized(const s_http_request& request) const {
+    if (m_auth_token.empty()) {
+        return true; // auth disabled
+    }
+
+    // Accept either "Authorization: Bearer <token>" or "X-Auth-Token: <token>".
+    // Header keys are stored lowercased by parse_request.
+    auto it = request.headers.find("authorization");
+    if (it != request.headers.end()) {
+        static const std::string prefix = "Bearer ";
+        const std::string& v = it->second;
+        if (v.size() > prefix.size() &&
+            v.compare(0, prefix.size(), prefix) == 0 &&
+            v.substr(prefix.size()) == m_auth_token) {
+            return true;
+        }
+    }
+
+    auto it2 = request.headers.find("x-auth-token");
+    if (it2 != request.headers.end() && it2->second == m_auth_token) {
+        return true;
+    }
+
+    return false;
+}
+
 void c_http_server::handle_connection(SOCKET client_socket) {
-    // Set receive timeout
-    DWORD timeout = RECV_TIMEOUT_MS;
-    setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO,
-               reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    // Track this connection so stop() can drain in-flight requests before WSACleanup.
+    m_active_connections.fetch_add(1);
 
-    // Set send timeout
-    setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO,
-               reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+    s_http_response response;
 
-    // Disable Nagle's algorithm for low latency
-    int nodelay = 1;
-    setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY,
-               reinterpret_cast<const char*>(&nodelay), sizeof(nodelay));
+    // Everything below runs on a detached thread. A single uncaught exception
+    // here would call std::terminate() and crash all of x64dbg, so the entire
+    // body is wrapped: any throw becomes a 500 instead of a process kill.
+    try {
+        // Set receive/send timeouts
+        DWORD timeout = RECV_TIMEOUT_MS;
+        setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO,
+                   reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+        setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO,
+                   reinterpret_cast<const char*>(&timeout), sizeof(timeout));
 
-    // Enable TCP keepalive to detect dead connections
-    int keepalive = 1;
-    setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE,
-               reinterpret_cast<const char*>(&keepalive), sizeof(keepalive));
+        int nodelay = 1;
+        setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY,
+                   reinterpret_cast<const char*>(&nodelay), sizeof(nodelay));
 
-    // Read the full request
-    std::string raw_data;
-    raw_data.reserve(4096);
+        int keepalive = 1;
+        setsockopt(client_socket, SOL_SOCKET, SO_KEEPALIVE,
+                   reinterpret_cast<const char*>(&keepalive), sizeof(keepalive));
 
-    char buffer[4096];
-    size_t content_length = 0;
-    bool headers_complete = false;
-    size_t header_end_pos = std::string::npos;
+        // Read the full request
+        std::string raw_data;
+        raw_data.reserve(4096);
 
-    while (true) {
-        auto bytes_read = recv(client_socket, buffer, sizeof(buffer), 0);
-        if (bytes_read <= 0) break;
+        char buffer[4096];
+        size_t content_length = 0;
+        bool headers_complete = false;
+        bool too_large = false;
+        size_t header_end_pos = std::string::npos;
 
-        raw_data.append(buffer, static_cast<size_t>(bytes_read));
+        while (true) {
+            auto bytes_read = recv(client_socket, buffer, sizeof(buffer), 0);
+            if (bytes_read <= 0) break;
 
-        // Check if we've received all headers
-        if (!headers_complete) {
-            header_end_pos = raw_data.find("\r\n\r\n");
-            if (header_end_pos != std::string::npos) {
-                headers_complete = true;
+            raw_data.append(buffer, static_cast<size_t>(bytes_read));
 
-                // Extract Content-Length
-                auto cl_pos = raw_data.find("Content-Length:");
-                if (cl_pos == std::string::npos) {
-                    cl_pos = raw_data.find("content-length:");
+            if (!headers_complete) {
+                header_end_pos = raw_data.find("\r\n\r\n");
+                if (header_end_pos != std::string::npos) {
+                    headers_complete = true;
+                    content_length = parse_content_length(raw_data, header_end_pos, too_large);
+                    if (too_large) break;
                 }
-                if (cl_pos != std::string::npos) {
-                    auto val_start = cl_pos + 15; // length of "Content-Length:"
-                    auto val_end = raw_data.find("\r\n", val_start);
-                    auto val_str = raw_data.substr(val_start, val_end - val_start);
-                    content_length = std::stoull(val_str);
-                }
+            }
+
+            if (headers_complete) {
+                auto body_start = header_end_pos + 4;
+                auto body_received = raw_data.size() - body_start;
+                if (body_received >= content_length) break;
+            }
+
+            // Safety: never buffer more than MAX_REQUEST_SIZE
+            if (raw_data.size() > MAX_REQUEST_SIZE) {
+                too_large = true;
+                break;
             }
         }
 
-        // Check if we have the complete body
-        if (headers_complete) {
-            auto body_start = header_end_pos + 4;
-            auto body_received = raw_data.size() - body_start;
-            if (body_received >= content_length) break;
+        if (too_large) {
+            response = s_http_response::bad_request("Request exceeds maximum size");
+        } else {
+            auto parse_result = parse_request(raw_data);
+            if (!parse_result.has_value()) {
+                response = s_http_response::bad_request(parse_result.error());
+            } else if (!is_authorized(parse_result.value())) {
+                response = s_http_response::unauthorized(
+                    "Missing or invalid auth token (Authorization: Bearer <token>)");
+            } else {
+                response = m_router->dispatch(parse_result.value());
+            }
         }
-
-        // Safety check: don't read more than MAX_REQUEST_SIZE
-        if (raw_data.size() > MAX_REQUEST_SIZE) break;
+    } catch (const std::exception& e) {
+        response = s_http_response::internal_error(std::string("Server exception: ") + e.what());
+    } catch (...) {
+        response = s_http_response::internal_error("Unknown server exception");
     }
 
-    // Parse and dispatch
-    auto parse_result = parse_request(raw_data);
-    s_http_response response;
-
-    if (parse_result.has_value()) {
-        response = m_router->dispatch(parse_result.value());
-    } else {
-        response = s_http_response::bad_request(parse_result.error());
-    }
-
-    // Send response (handle partial sends)
+    // Send response (best effort, handle partial sends)
     auto response_str = response.serialize();
     auto total = static_cast<int>(response_str.size());
     int sent = 0;
-
     while (sent < total) {
         auto result = send(client_socket, response_str.c_str() + sent, total - sent, 0);
         if (result == SOCKET_ERROR) break;
         sent += result;
     }
 
-    // Graceful shutdown
     shutdown(client_socket, SD_SEND);
     closesocket(client_socket);
+
+    m_active_connections.fetch_sub(1);
+}
+
+size_t c_http_server::parse_content_length(
+    const std::string& raw_data, size_t header_end_pos, bool& too_large
+) {
+    too_large = false;
+
+    auto cl_pos = raw_data.find("Content-Length:");
+    if (cl_pos == std::string::npos) {
+        cl_pos = raw_data.find("content-length:");
+    }
+    if (cl_pos == std::string::npos || cl_pos > header_end_pos) {
+        return 0; // no body declared
+    }
+
+    auto val_start = cl_pos + 15; // length of "Content-Length:"
+    auto val_end = raw_data.find("\r\n", val_start);
+    if (val_end == std::string::npos || val_end > header_end_pos + 2) {
+        val_end = header_end_pos;
+    }
+
+    // Trim surrounding whitespace, then parse without throwing.
+    auto begin = raw_data.find_first_not_of(" \t", val_start);
+    if (begin == std::string::npos || begin >= val_end) {
+        return 0;
+    }
+    auto last = raw_data.find_last_not_of(" \t\r", val_end - 1);
+    if (last == std::string::npos || last < begin) {
+        return 0;
+    }
+
+    unsigned long long value = 0;
+    auto res = std::from_chars(raw_data.data() + begin, raw_data.data() + last + 1, value);
+    if (res.ec != std::errc{}) {
+        return 0; // malformed Content-Length -> treat as no body, never throw
+    }
+
+    if (value > MAX_REQUEST_SIZE) {
+        too_large = true;
+        return 0;
+    }
+
+    return static_cast<size_t>(value);
 }
 
 std::expected<s_http_request, std::string> c_http_server::parse_request(
@@ -328,15 +416,27 @@ void c_http_server::parse_query_string(
 }
 
 std::string c_http_server::url_decode(const std::string& encoded) {
+    auto hex_value = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+
     std::string result;
     result.reserve(encoded.size());
 
     for (size_t i = 0; i < encoded.size(); ++i) {
         if (encoded[i] == '%' && i + 2 < encoded.size()) {
-            auto hex_str = encoded.substr(i + 1, 2);
-            auto ch = static_cast<char>(std::stoi(hex_str, nullptr, 16));
-            result += ch;
-            i += 2;
+            int hi = hex_value(encoded[i + 1]);
+            int lo = hex_value(encoded[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                result += static_cast<char>((hi << 4) | lo);
+                i += 2;
+            } else {
+                // Malformed escape: keep the '%' literally instead of throwing.
+                result += encoded[i];
+            }
         } else if (encoded[i] == '+') {
             result += ' ';
         } else {
