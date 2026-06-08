@@ -26,6 +26,93 @@ Suggested one-liner to prepend to launch posts:
 
 ---
 
+## v2.3.0 ready-to-post copy
+
+### Hacker News — Show HN
+**Title:** Show HN: Drive the x64dbg debugger with AI (MCP server, 23 tools)
+
+**Body (first comment):**
+```
+I wanted Claude to help me reverse engineer binaries without endlessly copy-pasting between the
+AI and x64dbg, so I built an MCP server for it.
+
+Two parts: a C++ plugin that runs inside x64dbg as a localhost REST API, and a TypeScript MCP
+server (on npm) that bridges it to any MCP client (Claude, Cursor, Windsurf, Cline) over stdio.
+23 "mega-tools" cover 153 endpoints: breakpoints, memory read/write, disassembly, tracing,
+anti-debug bypass, symbol/import/export enumeration, AOB pattern scanning, and PE dumping.
+
+Everything is local — the plugin binds to 127.0.0.1, the server is stdio. v2.3.0 just landed
+from a full audit pass: the HTTP layer is now crash-proof (a malformed request used to be able
+to take down x64dbg), there's an optional auth token, and a bunch of tools that used to just
+open a GUI view now return real parsed data to the model (imports/exports, symbols, strings).
+
+GitHub: https://github.com/bromoket/x64dbg_mcp
+npm: https://www.npmjs.com/package/x64dbg-mcp-server
+MIT licensed, feedback very welcome.
+```
+
+### r/ReverseEngineering
+**Title:** x64dbg MCP v2.3.0 — let AI drive x64dbg, now with real import/export/symbol/string parsing
+
+**Body:**
+```
+Update to my MCP server that connects AI assistants (Claude, Cursor, Windsurf, Cline) to x64dbg.
+
+A C++ plugin runs inside x64dbg as a localhost REST API; a TypeScript MCP server bridges it over
+stdio. 23 mega-tools / 153 endpoints: breakpoints, memory, disassembly, tracing, anti-debug,
+CFG/xrefs, AOB scanning, PE dumping with Scylla IAT fix.
+
+v2.3.0 (full audit pass):
+- imports/exports, symbols (search/list), patches, and strings now return real parsed data
+  instead of pointing you at a GUI view
+- crash-proofed the HTTP layer (a malformed request could previously crash x64dbg)
+- optional bearer-token auth + CORS locked down
+- live `tracing status`; exception/trace tools now honor every parameter
+- still: x32dbg loads on current snapshots, no spurious request timeouts
+
+All local. Install = drop the plugin DLL in x64dbg + point your client at `npx x64dbg-mcp-server`.
+
+GitHub: https://github.com/bromoket/x64dbg_mcp
+```
+
+### r/ClaudeAI
+**Title:** Built an MCP server that lets Claude operate the x64dbg debugger (v2.3.0)
+
+**Body:**
+```
+Connects Claude Code/Desktop to the x64dbg debugger via MCP. Claude can set breakpoints, read/
+write memory, disassemble, trace execution, bypass anti-debug, enumerate imports/exports/symbols,
+scan byte patterns, and dump PEs — 23 typed tools, all on localhost.
+
+Setup:
+1. Drop the plugin DLL into x64dbg (download from releases)
+2. Add to your config:
+{ "mcpServers": { "x64dbg": { "command": "npx", "args": ["-y", "x64dbg-mcp-server"] } } }
+
+Then: "disassemble the current function and explain it" or "set a conditional breakpoint that
+only triggers when EAX == 0 and run". v2.3.0 hardened the plugin and made more tools return real
+data to the model.
+
+GitHub: https://github.com/bromoket/x64dbg_mcp
+npm: https://www.npmjs.com/package/x64dbg-mcp-server
+```
+
+### Twitter/X
+```
+Shipped v2.3.0 of the x64dbg MCP server 🧰
+
+Let Claude / Cursor drive x64dbg: breakpoints, memory, disasm, tracing, anti-debug, imports/
+exports, PE dumping. 23 tools, all local.
+
+This release: crash-proofed + optional auth, and more tools now return real parsed data.
+
+npx x64dbg-mcp-server
+github.com/bromoket/x64dbg_mcp
+#ReverseEngineering #MCP #x64dbg
+```
+
+---
+
 ## 1. MCP Official Registry (HIGH PRIORITY)
 
 **URL**: https://registry.modelcontextprotocol.io
