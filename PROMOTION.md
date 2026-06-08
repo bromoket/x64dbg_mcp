@@ -4,20 +4,25 @@ Everything below is ready to copy-paste. Work through the list.
 
 ---
 
-## v2.2.2 relaunch angle (lead with this)
+## v2.3.0 angle (lead with this)
 
-The fresh hook for any new post/thread: **it works again on current x64dbg, and it stopped
-timing out.** Two concrete, relatable fixes:
+The fresh hook: a full audit pass made it **safer and more capable** - and it works on current
+x64dbg. Concrete, relatable highlights:
 
-- **x32dbg loads again.** Newer x64dbg snapshots changed the loader to require an explicit
-  `DllMain`; the 32-bit plugin would fail with `_DllMain@12 could not be located`. Fixed in
-  v2.2.2 - 32-bit reversing is back.
-- **No more spurious timeouts.** `run`, `continue`, and conditional traces are unbounded, so
-  the server now waits indefinitely by default instead of killing long operations mid-flight.
+- **Crash-proof + optional auth.** A malformed request can no longer take down x64dbg, CORS is
+  locked down, and you can require a bearer token so only your tools can drive the debugger.
+- **More tools return real data.** `imports`/`exports`, `symbols`, `patches`, and `strings`
+  now return parsed results (PE tables, symbol enums, in-memory string scan) instead of
+  pointing at a GUI view. New live `tracing status`.
+- **Still fixed from v2.2.x:** x32dbg loads on the latest snapshots, and requests no longer
+  time out on long operations.
+
+23 mega-tools, 153 REST endpoints, all local.
 
 Suggested one-liner to prepend to launch posts:
-> "Just shipped v2.2.2 - fixed 32-bit support for the latest x64dbg update and killed the
-> request timeouts. 23 mega-tools, AI-driven debugging, all local."
+> "Shipped v2.3.0 of the x64dbg MCP server: hardened the plugin (crash-proof + optional auth),
+> and imports/exports/symbols/strings now return real parsed data to the AI. 23 mega-tools,
+> all on localhost."
 
 ---
 
